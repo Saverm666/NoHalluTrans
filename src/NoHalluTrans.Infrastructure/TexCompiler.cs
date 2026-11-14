@@ -65,7 +65,7 @@ public sealed class TexCompiler(TexRuntime runtime, IProcessRunner runner)
             .SelectMany(m => new[] { m.Groups[1].Value.Trim() + ".bbx", m.Groups[1].Value.Trim() + ".cbx" });
         var babelLanguages = Regex.Matches(log, @"Package babel Error: Unknown option [`']([^`']+)[`']")
             .Select(m => m.Groups[1].Value.Trim() + ".ldf");
-        var tfmFonts = Regex.Matches(log, @"Font \\[^=]+=([^\s:/\\]+)(?:\s+at\b|\s*not loadable:)[^\r\n]*not loadable: Metric \(TFM\) file (?:or installed font )?not found")
+        var tfmFonts = Regex.Matches(log, @"Font (?:\\?[^\s=]+)=([^\s:/\\]+)(?:\s+at\b|\s*not loadable:)[^\r\n]*not loadable: Metric \(TFM\) file (?:or installed font )?not found")
             .Select(m => m.Groups[1].Value.Trim() + ".tfm");
         var pkFonts = Regex.Matches(log, @"mktexpk: don't know how to create bitmap font for ([^\s.]+)")
             .Select(m => m.Groups[1].Value.Trim() + ".tfm");

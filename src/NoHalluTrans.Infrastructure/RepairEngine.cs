@@ -124,6 +124,25 @@ public sealed class RepairEngine(TexCompiler compiler, TexRuntime runtime)
                 }
                 break;
             }
+            if (!changed && !result.Ok && project.Engine != "pdflatex" && Regex.IsMatch(result.Log, @"Cannot use \\?XeTeXglyph\b[^\r\n]*not a native platform font"))
+            {
+                string[] files = FileStore.CompilationSourceFiles(project.Root, project.MainTex, includeLocalStyles: true).ToArray();
+                bool didDisable = false;
+                foreach (string file in files)
+                {
+                    string old = FileStore.ReadTex(file);
+                    string next = DisableMicrotypeProtrusion(old);
+                    if (next == old) continue;
+                    FileStore.WriteTex(file, next);
+                    didDisable = true;
+                }
+                if (didDisable)
+                {
+                    records.Add(new("microtype-xetex-protrusion", "Disable microtype protrusion under XeLaTeX when a legacy Type1 font triggers XeTeXglyph errors.", round));
+                    changed = true;
+                    progress?.Report(new("issue", "compile", "已应用修复：microtype-xetex-protrusion", Code: "repair-applied"));
+                }
+            }
             if (!changed) break;
             repairRound++;
             if (!result.Ok) result = await compiler.CompileAsync(project, options.CompileTimeoutSeconds, token);
@@ -169,5 +188,29 @@ public sealed class RepairEngine(TexCompiler compiler, TexRuntime runtime)
             text = text.Remove(m.Index, m.Length).Insert(m.Index, (letter + accents[m.Groups[1].Value[0]]).Normalize());
         }
         return text;
+    }
+
+    private static string DisableMicrotypeProtrusion(string text)
+    {
+        string active = RepairRules.ExecutableText(text);
+        var matches = Regex.Matches(active, @"(?m)^[ \t]*(?<command>\\(?:usepackage|RequirePackage))[ \t]*(?:\[(?<options>[^\]\r\n]*)\][ \t]*)?\{[ \t]*microtype[ \t]*\}");
+        string changed = text;
+        foreach (Match line in matches.Cast<Match>().Reverse())
+        {
+            Group options = line.Groups["options"];
+            if (options.Success)
+            {
+                var existing = options.Value.Split(',').Select(o => o.Trim()).Where(o => o.Length > 0).ToList();
+                if (existing.Any(o => Regex.IsMatch(o, @"^(?:protrusion|activate)[ \t]*=[ \t]*false$"))) continue;
+                var kept = existing.Where(o => o.Split('=')[0].Trim() != "protrusion").ToList();
+                kept.Add("protrusion=false");
+                changed = changed.Remove(options.Index, options.Length).Insert(options.Index, string.Join(',', kept));
+            }
+            else
+            {
+                changed = changed.Insert(line.Groups["command"].Index + line.Groups["command"].Length, "[protrusion=false]");
+            }
+        }
+        return changed;
     }
 }
