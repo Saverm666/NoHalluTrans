@@ -54,9 +54,16 @@ public sealed class TranslationScheduler
                         continue;
                     }
                     List<Fragment> retry = [];
+                    List<string> retryDetails = [];
                     foreach (var f in remaining)
                     {
-                        if (!reply.TryGetValue(f.Index, out var value)) { error = "回复缺少片段 " + f.Id; retry.Add(f); continue; }
+                        if (!reply.TryGetValue(f.Index, out var value))
+                        {
+                            error = "回复缺少片段 " + f.Id;
+                            retryDetails.Add($"{f.Id}: missing from reply");
+                            retry.Add(f);
+                            continue;
+                        }
                         try
                         {
                             TranslationValidation.Validate(f, value, targetLanguage);
@@ -68,9 +75,21 @@ public sealed class TranslationScheduler
                                 Report($"已处理 {completed}/{fragments.Count} 块");
                             }
                         }
-                        catch (FormatException ex) { error = ex.Message; retry.Add(f); }
+                        catch (FormatException ex)
+                        {
+                            error = ex.Message;
+                            string expectedMarkers = f.Values.Count > 0
+                                ? " (allowed placeholders: " + string.Join(", ", Enumerable.Range(0, f.Values.Count).Select(MarkerProtocol.Make)) + ")"
+                                : " (no placeholders allowed)";
+                            retryDetails.Add($"{f.Id}: {ex.Message}{expectedMarkers}");
+                            retry.Add(f);
+                        }
                     }
-                    if (retry.Count > 0) progress?.Report(new("issue", "translate", $"第 {round} 轮译文校验未通过，将重试：{error}", Code: "translation-validation"));
+                    if (retry.Count > 0)
+                    {
+                        error = string.Join("; ", retryDetails.Take(4));
+                        progress?.Report(new("issue", "translate", $"第 {round} 轮译文校验未通过，将重试：{error}", Code: "translation-validation"));
+                    }
                     remaining = retry;
                 }
                 foreach (var f in remaining)

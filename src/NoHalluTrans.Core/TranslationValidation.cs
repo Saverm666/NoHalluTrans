@@ -55,9 +55,19 @@ public static class TranslationValidation
         // Slot identity is preserved even when the target grammar reorders slots.
         var first = problems.FirstOrDefault(p => p.Code != "unrestored-placeholder");
         if (first is not null) throw new FormatException(first.Message);
-        if (!TexStructure.Matches(fragment.Template).Select(m => m.Value)
-                .SequenceEqual(TexStructure.Matches(value).Select(m => m.Value)))
+        if (!SameTexStructureMultiset(fragment.Template, value))
             throw new FormatException("译文改变了 TeX 命令或分组参数结构。");
+    }
+    private static bool SameTexStructureMultiset(string source, string translation)
+    {
+        var expected = TexStructure.Matches(source).Select(m => m.Value)
+            .GroupBy(v => v, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        var actual = TexStructure.Matches(translation).Select(m => m.Value)
+            .GroupBy(v => v, StringComparer.Ordinal)
+            .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
+        return expected.Count == actual.Count
+            && expected.All(kv => actual.TryGetValue(kv.Key, out int count) && count == kv.Value);
     }
     private static int BraceDelta(string text)
     {
