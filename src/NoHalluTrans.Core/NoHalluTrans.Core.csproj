@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <EmbeddedResource Include="../../reference/03-rules/ported-rules.json" Link="Data/ported-rules.json" />
+    <EmbeddedResource Include="Data/*.json" />
+  </ItemGroup>
+</Project>

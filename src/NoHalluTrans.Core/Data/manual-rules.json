@@ -1,0 +1,219 @@
+[
+  {
+    "name": "cjk-ctex-package-conflict",
+    "description": "Migrate supported duplicate xeCJK options to xeCJKsetup after a confirmed ctex/xeCJK option clash.",
+    "triggers": [
+      "Option clash for package xeCJK"
+    ],
+    "enabled": true,
+    "retired": false,
+    "handler": "revision_cjk_options",
+    "tex": null,
+    "note": "Structured diagnostic and executable-source guards; strict native witnesses in disabled32-batch-a through e. Historical payload superseded."
+  },
+  {
+    "name": "legacy-font-character-mapping",
+    "description": "Preserve author fonts; add verified coverage for diagnosed basic Han glyphs or a missing Libertinus mathematical checkmark, falling back only for the missing glyph.",
+    "triggers": [
+      "Missing character:"
+    ],
+    "tex": null,
+    "enabled": true,
+    "retired": false,
+    "handler": "revision_missing_glyph",
+    "note": "Structured diagnostic and executable-source guards; strict native witnesses in disabled32-batch-a through e. Historical payload superseded."
+  },
+  {
+    "name": "legacy-frontmatter-cjk-font",
+    "description": "Keep the requested CJK family when available; use its matching Fandol fallback only for the diagnosed missing legacy family.",
+    "triggers": [
+      "Package fontspec Error"
+    ],
+    "tex": null,
+    "enabled": true,
+    "retired": false,
+    "handler": "revision_frontmatter_font",
+    "note": "Structured diagnostic and executable-source guards; strict native witnesses in disabled32-batch-a through e. Historical payload superseded."
+  },
+  {
+    "name": "utf8-bibliography",
+    "description": "Bridge a diagnosed undefined legacy IeC Latin-accent wrapper under XeLaTeX/LuaLaTeX; preserve bibliography files and survive BibTeX/Biber regeneration.",
+    "triggers": [
+      "\\IeC",
+      "Unicode char",
+      "inputenc Error",
+      "bibliography:utf8:"
+    ]
+  },
+  {
+    "name": "missing-bbl",
+    "description": "I couldn't open file ...bbl / aux \\bibdata without a .bbl: run the bibtex-or-biber decision table once (RE compile.rs bibliography tools).",
+    "triggers": [
+      "I couldn't open file",
+      "No file",
+      ".bbl"
+    ],
+    "enabled": false,
+    "retired": true,
+    "disabled_reason": "退役：普通缺失 bbl 由 TexCompiler 的实际 bibtex/biber 决策及重编译处理，真实正常文献流程无需该规则；无 bib 数据的硬缺失没有可执行生成动作。避免重复运行文献工具。"
+  },
+  {
+    "name": "natbib-final-aux",
+    "description": "Correct the historical HJFY NAT@cmprs end-document wrapper after its exact Missing number failure.",
+    "triggers": [
+      "Missing number, treated as zero."
+    ],
+    "tex": null,
+    "enabled": true,
+    "handler": "revision_natbib_aux",
+    "note": "Structured diagnostic and executable-source guards; strict native witnesses in disabled32-batch-a through e. Historical payload superseded."
+  },
+  {
+    "name": "cjk-theorem-break",
+    "description": "Unbox a diagnosed literal Han mbox inside a theorem to restore CJK line breaking.",
+    "triggers": [
+      "Overfull \\hbox"
+    ],
+    "tex": null,
+    "enabled": true,
+    "retired": false,
+    "handler": "revision_theorem_text",
+    "note": "Structured diagnostic and executable-source guards; strict native witnesses in disabled32-batch-a through e. Historical payload superseded."
+  },
+  {
+    "name": "titlesec-unnumbered-anchor",
+    "description": "Give explicit directory entries after supported titlesec starred headings their own hyperref targets.",
+    "triggers": [
+      "The anchor of a bookmark and its parent"
+    ],
+    "tex": null,
+    "enabled": true,
+    "retired": false,
+    "handler": "revision_titlesec_anchor",
+    "note": "Structured diagnostic and executable-source guards; strict native witnesses in disabled32-batch-a through e. Historical payload superseded."
+  },
+  {
+    "name": "xecjk-boundary",
+    "description": "xeCJK '*removing \\__xeCJK_boundary_inline_stream_' bookkeeping leak: rebuild the \\hjfy@next continuation chain (RE notes §7.4).",
+    "triggers": [
+      "\\__xeCJK_boundary_inline_stream_",
+      "removing `\\__xeCJK_boundary",
+      "xeCJK boundary"
+    ],
+    "tex": "\\makeatletter\n% hjfy: xecjk-boundary -- repaired xeCJK PDF-string boundary expansion\n\\providecommand\\hjfy@next{\\__xeCJK_boundary_capture_resume:\\aftergroup\\hjfy@next}\n\\AtBeginDocument{%\n  \\@ifpackageloaded{xeCJK}{%\n    \\@ifundefined{__xeCJK_boundary_capture_resume}{}{%\n      \\let\\__xeCJK_boundary_inline_stream_\\hjfy@next}%\n  }{}%\n}\n\\makeatother",
+    "enabled": false,
+    "retired": true,
+    "disabled_reason": "退役：内部宏缺少 ExplSyntaxOn，检查名省略冒号，目标 inline_stream_ 不是实际 begin:n/end:n 命令；实测 capture_resume 身份完全不变，未安装有效修复。"
+  },
+  {
+    "name": "microtype-xetex",
+    "description": "Under XeLaTeX, disable only the explicitly diagnosed unsupported microtype font expansion option, preserving all other options.",
+    "triggers": [
+      "Package microtype Error: Font expansion does not work with xetex"
+    ],
+    "tex": null,
+    "handler": "microtype_expansion",
+    "note": "Executed by the registered context-aware handler; legacy regex descriptors are retained only for historical vectors."
+  },
+  {
+    "name": "mdpi-pict2e-driver",
+    "description": "Under XeLaTeX, remove the explicitly wrong pdftex option only after pict2e reports no suitable driver; retain supported arrow options and comments.",
+    "triggers": [
+      "\\set@color",
+      "\\pdfcolorstack",
+      "xcolor.sty"
+    ],
+    "handler": "pict2e_driver"
+  },
+  {
+    "name": "subfiles-ctex",
+    "description": "Move the diagnosed late ctex declaration to the subfile preamble, preserving its options and body.",
+    "triggers": [
+      "Can be used only in preamble"
+    ],
+    "enabled": true,
+    "retired": false,
+    "handler": "revision_subfiles_ctex",
+    "tex": null,
+    "note": "Structured diagnostic and executable-source guards; strict native witnesses in disabled32-batch-a through e. Historical payload superseded."
+  },
+  {
+    "name": "appendix-equation-destinations",
+    "description": "Separate diagnosed appendix equation targets while retaining the original main-equation target expression and all counters.",
+    "triggers": [
+      "destination with the same identifier",
+      "appendix:colliding-equation-destination"
+    ],
+    "tex": null,
+    "enabled": true,
+    "retired": false,
+    "handler": "revision_appendix_dest",
+    "note": "Structured diagnostic and executable-source guards; strict native witnesses in disabled32-batch-a through e. Historical payload superseded."
+  },
+  {
+    "name": "soul-twocolumn",
+    "description": "Repair diagnosed nested soul/ulem underlining in a two-column title using nested ulem underlining.",
+    "triggers": [
+      "Package soul Error",
+      "Reconstruction failed"
+    ],
+    "enabled": true,
+    "retired": false,
+    "handler": "revision_soul_title",
+    "tex": null,
+    "note": "Structured diagnostic and executable-source guards; strict native witnesses in disabled32-batch-a through e. Historical payload superseded."
+  },
+  {
+    "name": "pdfinfo",
+    "description": "Adapt a diagnosed undefined pdfinfo command to the native XeTeX or LuaTeX backend, preserving its PDF Info dictionary. Unsupported suppression assignments are not erased.",
+    "triggers": [
+      "Undefined control sequence"
+    ],
+    "tex": null,
+    "handler": "pdfinfo",
+    "note": "Executed by the registered context-aware handler; legacy regex descriptors are retained only for historical vectors."
+  },
+  {
+    "name": "enumitem-xecjk-multiline",
+    "description": "enumitem multiline labels collide with xeCJK's sbox boundary: inject the recovered \\enit@postlabel@i deferral (RE enumitem_xecjk.rs).",
+    "triggers": [
+      "enumitem:xecjk-multiline-label",
+      "enumitem",
+      "xeCJK"
+    ],
+    "tex": "% hjfy: enumitem-xecjk-multiline -- defer enumitem's multiline label reader past xeCJK's sbox boundary\n\\makeatletter\\ExplSyntaxOn\n\\def\\hjfy@expected@postlabel{\\@ifnextchar\\egroup{\\aftergroup\\enit@postlabel}{\\enit@postlabel@i}}\n\\AddToHook{begindocument/before}{%\n  \\@ifpackageloaded{enumitem}{%\n    \\@ifpackageloaded{xeCJK}{%\n      \\ifx\\enit@postlabel\\hjfy@expected@postlabel\n        \\cs_if_exist:NT \\__xeCJK_boundary_capture_resume: {%\n          \\let\\hjfy@orig@postlabel@i\\enit@postlabel@i\n          \\def\\enit@postlabel@i#1{%\n            \\ifx#1\\__xeCJK_boundary_capture_resume:\n              \\def\\hjfy@next{\\__xeCJK_boundary_capture_resume:\\aftergroup\\enit@postlabel}%\n            \\else\n              \\def\\hjfy@next{\\hjfy@orig@postlabel@i#1}%\n            \\fi\n            \\hjfy@next\n          }%\n          \\typeout{hjfy:enumitem-xecjk-multiline}%\n        }%\n      \\fi\n    }{}%\n  }{}%\n}\n\\ExplSyntaxOff\\makeatother\n"
+  },
+  {
+    "name": "legacy-cjk-environment",
+    "description": "Provide scoped UTF8 legacy CJK environments with verified gbsn/gkai/bsmi/bkai font families.",
+    "triggers": [
+      "Environment CJK undefined"
+    ],
+    "tex": null,
+    "enabled": true,
+    "retired": false,
+    "handler": "revision_legacy_cjk",
+    "note": "Structured diagnostic and executable-source guards; strict native witnesses in disabled32-batch-a through e. Historical payload superseded."
+  },
+  {
+    "name": "state-delimiter",
+    "description": "Restore the diagnosed simple period-and-space-delimited state heading; preserve the complete heading and body, reject braced syntax and author definitions.",
+    "triggers": [
+      "Undefined control sequence",
+      "\\state"
+    ],
+    "tex": null,
+    "handler": "state_delimiter"
+  },
+  {
+    "name": "literal-syntax-guard",
+    "enabled": false,
+    "disabled_reason": "Classifier for verbatim regions only; it has no source-repair action.",
+    "description": "classifies verbatim-family regions (\\verb, \\lstinline, verbatim/minted/lstlisting/comment environments); no rewrite (RE literal_syntax.rs).",
+    "triggers": [
+      "\\(?:verb|lstinline)",
+      "\\begin{(?:verbatim|Verbatim"
+    ],
+    "retired": true
+  }
+]

@@ -1,0 +1,9 @@
+<UserControl xmlns:local="using:NoHalluTrans.Desktop" x:Class="NoHalluTrans.Desktop.Views.TaskParameters" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <StackPanel Spacing="18" MinWidth="400">
+    <Grid ColumnSpacing="16"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><local:AnchoredComboBox Header="原文语言" ItemsSource="{Binding Languages}" ItemTemplate="{StaticResource OptionTemplate}" SelectedItem="{Binding SourceLanguage, Mode=TwoWay}" HorizontalAlignment="Stretch"/><local:AnchoredComboBox Grid.Column="1" Header="编译引擎" ItemsSource="{Binding Engines}" ItemTemplate="{StaticResource OptionTemplate}" SelectedItem="{Binding Engine, Mode=TwoWay}" HorizontalAlignment="Stretch"/></Grid>
+    <TextBox Header="主 TeX 文件" PlaceholderText="自动识别，或填写相对路径" Text="{Binding MainHint, Mode=TwoWay}"/>
+    <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox Header="外部译文 JSON" PlaceholderText="可选" Text="{Binding TranslationsFile, Mode=TwoWay}"/><Button Grid.Column="1" Content="选择" Command="{Binding BrowseTranslationsCommand}" VerticalAlignment="Bottom"/></Grid>
+    <CheckBox Content="自动提取术语" IsChecked="{Binding AutoTerminology, Mode=TwoWay}"/>
+    <CheckBox Content="允许调用外部程序（仅可信源码）" IsChecked="{Binding AllowShellEscape, Mode=TwoWay}"/>
+  </StackPanel>
+</UserControl>

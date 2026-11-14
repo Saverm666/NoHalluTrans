@@ -1,0 +1,44 @@
+{
+  "fragments": [
+    {
+      "id": "f0000",
+      "translation": "实验结果"
+    },
+    {
+      "id": "f0001",
+      "translation": "该方法提升了翻译质量。"
+    },
+    {
+      "id": "f0002",
+      "translation": "方法"
+    },
+    {
+      "id": "f0003",
+      "translation": "结果"
+    },
+    {
+      "id": "f0004",
+      "translation": "基线"
+    },
+    {
+      "id": "f0005",
+      "translation": "良好"
+    },
+    {
+      "id": "f0006",
+      "translation": "小型翻译研究"
+    },
+    {
+      "id": "f0007",
+      "translation": "引言"
+    },
+    {
+      "id": "f0008",
+      "translation": "我们研究注意力机制，并保留公式 ⟦TEX_0⟧ 和文献引用 ⟦TEX_1⟧。"
+    },
+    {
+      "id": "f0009",
+      "translation": "翻译保留数学表达式、文献引用与文档结构。\n⟦TEX_0⟧\n⟦TEX_1⟧\n⟦TEX_2⟧"
+    }
+  ]
+}

@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/NoHalluTrans.Core/NoHalluTrans.Core.csproj" />
+    <Project Path="src/NoHalluTrans.Desktop/NoHalluTrans.Desktop.csproj" />
+    <Project Path="src/NoHalluTrans.Infrastructure/NoHalluTrans.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NoHalluTrans.Desktop.Tests/NoHalluTrans.Desktop.Tests.csproj" />
+    <Project Path="tests/NoHalluTrans.Parity/NoHalluTrans.Parity.csproj" />
+    <Project Path="tests/NoHalluTrans.Tests/NoHalluTrans.Tests.csproj" />
+  </Folder>
+</Solution>

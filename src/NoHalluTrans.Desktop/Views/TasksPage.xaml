@@ -1,0 +1,70 @@
+<UserControl xmlns:local="using:NoHalluTrans.Desktop" x:Class="NoHalluTrans.Desktop.Views.TasksPage" xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <Grid Padding="32,28,32,24">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/></Grid.RowDefinitions>
+    <StackPanel Spacing="4" Margin="0,0,0,20"><TextBlock Text="论文翻译" Style="{StaticResource PageHeading}"/></StackPanel>
+    <Grid Grid.Row="1" ColumnSpacing="24">
+      <Grid.ColumnDefinitions><ColumnDefinition Width="340"/><ColumnDefinition Width="*"/></Grid.ColumnDefinitions>
+      <Border Padding="0,4,24,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,0,1,0">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+          <StackPanel Spacing="12">
+            <Grid>
+              <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+              <TextBlock Text="新建翻译" Style="{StaticResource SectionHeading}" VerticalAlignment="Center"/>
+              <Button Grid.Column="1" Click="Advanced_Click" Padding="10,4" VerticalAlignment="Center" ToolTipService.ToolTip="配置原文语言、编译引擎、主文件提示等高级参数" AutomationProperties.AutomationId="AdvancedOptionsButton">
+                <StackPanel Orientation="Horizontal" Spacing="6"><FontIcon Glyph="&#xE713;" FontSize="13"/><TextBlock Text="高级选项" FontSize="12"/></StackPanel>
+              </Button>
+            </Grid>
+            <StackPanel Spacing="10">
+              <TextBox Header="论文来源" PlaceholderText="输入 arXiv 编号，例如 1706.03762" Text="{Binding Source, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" TextWrapping="Wrap" AcceptsReturn="False" MinHeight="48" MaxHeight="80" AutomationProperties.AutomationId="SourceInput" ToolTipService.ToolTip="支持 arXiv 编号、链接或拖入 TeX 源码压缩包。"/>
+              
+              <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition/></Grid.ColumnDefinitions><Button Content="导入源码包" Command="{Binding BrowseSourceCommand}" HorizontalAlignment="Stretch"/><Button Grid.Column="1" Content="源码文件夹" Command="{Binding BrowseFolderCommand}" HorizontalAlignment="Stretch"/></Grid>
+            </StackPanel>
+            <local:AnchoredComboBox Header="翻译为" ItemsSource="{Binding Languages}" ItemTemplate="{StaticResource OptionTemplate}" SelectedItem="{Binding TargetLanguage, Mode=TwoWay}" HorizontalAlignment="Stretch"/>
+            <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBox Header="输出目录" Text="{Binding OutputDirectory, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" ToolTipService.ToolTip="仅保存最终 PDF；源码、日志及中间文件留在任务工作目录。" AutomationProperties.AutomationId="OutputDirectoryInput"/><Button Grid.Column="1" Content="选择" Command="{Binding BrowseOutputCommand}" VerticalAlignment="Bottom"/></Grid>
+            <local:AnchoredComboBox Header="PDF 格式" ItemsSource="{Binding PdfLayouts}" ItemTemplate="{StaticResource OptionTemplate}" SelectedItem="{Binding PdfLayout, Mode=TwoWay}" HorizontalAlignment="Stretch" AutomationProperties.AutomationId="PdfLayoutInput"/>
+            <Button Command="{Binding AddTaskCommand}" Style="{StaticResource AccentButtonStyle}" HorizontalAlignment="Stretch" Margin="0,4,0,0" Padding="16,9" AutomationProperties.AutomationId="AddTaskButton"><StackPanel Orientation="Horizontal" Spacing="10"><FontIcon Glyph="&#xE768;" FontSize="14"/><TextBlock Text="{Binding AddTaskLabel}"/></StackPanel></Button>
+
+          </StackPanel>
+        </ScrollViewer>
+      </Border>
+      <Grid Grid.Column="1" RowSpacing="16">
+        <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+        <Grid><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel Orientation="Horizontal" Spacing="10"><TextBlock Text="任务记录" Style="{StaticResource SectionHeading}" VerticalAlignment="Center"/><Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="10" Padding="8,2" VerticalAlignment="Center"><TextBlock Text="{Binding TaskCount}" FontSize="12"/></Border></StackPanel></Grid>
+        <Border Grid.Row="1" Style="{StaticResource Card}" Padding="4" MinHeight="160">
+          <Grid>
+            <ListView ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask, Mode=TwoWay}" SelectionMode="Single" IsItemClickEnabled="False" BorderThickness="0" Background="Transparent" Padding="4" HorizontalContentAlignment="Stretch" AutomationProperties.AutomationId="TaskList">
+              <ListView.ItemTemplate>
+                <DataTemplate>
+                  <Grid Padding="12,14" ColumnSpacing="14" RowSpacing="7" HorizontalAlignment="Stretch">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="40"/><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+                    <Border Grid.RowSpan="2" CornerRadius="8" Background="{ThemeResource AccentFillColorTertiaryBrush}" Width="40" Height="44" VerticalAlignment="Top"><FontIcon Glyph="&#xE8A5;" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}" FontSize="20"/></Border>
+                    <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Column="2" Text="{Binding Status}" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/>
+                    <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding StageLabel}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis"/>
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="{Binding CreatedLabel}" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+                    <TextBlock Grid.Row="2" Grid.Column="1" Grid.ColumnSpan="2" Text="{Binding BlockSummary}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextWrapping="Wrap"/>
+                    <ProgressBar Grid.Row="3" Grid.Column="1" Grid.ColumnSpan="2" Value="{Binding Percent}" IsIndeterminate="{Binding IsIndeterminate}" Maximum="100" Height="3" Margin="0,5,0,0"/>
+                  </Grid>
+                </DataTemplate>
+              </ListView.ItemTemplate>
+            </ListView>
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="12" MaxWidth="300" Visibility="{Binding TaskCount, Converter={StaticResource VisibleWhen}, ConverterParameter=inverse}" IsHitTestVisible="False">
+              <Border Background="{ThemeResource ControlFillColorSecondaryBrush}" CornerRadius="20" Width="56" Height="56" HorizontalAlignment="Center"><FontIcon Glyph="&#xE8A5;" FontSize="26" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/></Border>
+              <TextBlock Text="暂无任务" FontSize="18" FontWeight="SemiBold" HorizontalAlignment="Center" Margin="0,6,0,0"/>
+              
+            </StackPanel>
+          </Grid>
+        </Border>
+        <Border Grid.Row="2" Padding="0,20,0,0" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Visibility="{Binding HasSelectedTask, Converter={StaticResource VisibleWhen}}">
+          <StackPanel Spacing="14">
+            <Grid ColumnSpacing="12"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><StackPanel Spacing="4"><TextBlock Text="{Binding SelectedTask.Title}" FontSize="16" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/><TextBlock Text="{Binding SelectedTask.StageLabel}" FontSize="12" Foreground="{ThemeResource AccentTextFillColorPrimaryBrush}"/><TextBlock Text="{Binding SelectedTask.BlockSummary}" FontSize="12" TextWrapping="Wrap" Style="{StaticResource SecondaryText}" AutomationProperties.AutomationId="SelectedTaskProgress"/><TextBlock Text="{Binding SelectedTask.Detail}" FontSize="12" TextWrapping="Wrap" MaxLines="2" Style="{StaticResource SecondaryText}"/></StackPanel><Button Grid.Column="1" Content="打开译文" Style="{StaticResource AccentButtonStyle}" Command="{Binding OpenPdfCommand}" VerticalAlignment="Center"/></Grid>
+            <StackPanel Orientation="Horizontal" Spacing="8"><Button Content="重新运行" Command="{Binding RetryCommand}"/><Button Content="取消任务" Command="{Binding CancelCommand}"/><Button Content="删除任务" Click="DeleteTask_Click" IsEnabled="{Binding CanDeleteSelectedTask}" Background="{ThemeResource SystemFillColorCriticalBackgroundBrush}" Foreground="{ThemeResource SystemFillColorCriticalBrush}" ToolTipService.ToolTip="删除选中任务记录及其工作目录" AutomationProperties.AutomationId="DeleteTaskButton"/><DropDownButton Content="更多操作"><DropDownButton.Flyout><MenuFlyout><MenuFlyoutItem Text="打开原文 PDF" Command="{Binding OpenOriginalCommand}"/><MenuFlyoutItem Text="导出译后源码" Command="{Binding ExportSourceCommand}"/><MenuFlyoutItem Text="导出诊断日志" Command="{Binding ExportLogsCommand}"/><MenuFlyoutSeparator/><MenuFlyoutItem Text="打开工作目录" Command="{Binding OpenWorkCommand}"/></MenuFlyout></DropDownButton.Flyout></DropDownButton></StackPanel>
+            <local:AnchoredComboBox Header="选择主文件后重新运行" ItemsSource="{Binding MainCandidates}" SelectedItem="{Binding SelectedMainCandidate, Mode=TwoWay}" HorizontalAlignment="Stretch" Visibility="{Binding MainCandidates.Length, Converter={StaticResource VisibleWhen}}"/>
+            <Button Content="运行详情" Click="Details_Click" Style="{StaticResource SubtleButtonStyle}" Padding="0,4"/>
+          </StackPanel>
+        </Border>
+      </Grid>
+    </Grid>
+  </Grid>
+</UserControl>
