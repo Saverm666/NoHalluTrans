@@ -52,8 +52,5 @@ scripts/summarize-paper-batch.py
 scripts/Verify-Integration.ps1
 scripts/Verify-Portable.ps1
 
-# Internal progress, verification, and rule-audit docs
-docs/PROGRESS.md
-docs/VERIFICATION.md
-docs/关闭规则修复验收.md
-docs/规则审计.md
+# Documentation (local/internal docs)
+docs/

@@ -17,8 +17,7 @@ NoHalluTrans/
 ├── src/                   Core、Infrastructure、Desktop 源码
 ├── samples/               离线 LaTeX 示例
 ├── scripts/               开发、构建与打包脚本
-├── tools/launcher/        原生启动器源码与程序
-└── docs/                  使用说明与开发指南
+└── tools/launcher/        原生启动器源码与程序
 ```
 
 ## 构建
@@ -35,9 +34,3 @@ NoHalluTrans/
 # 打包为 ZIP 分发包
 .\scripts\Package.ps1
 ```
-
-## 文档
-
-- [使用说明](docs/使用说明.md)
-- [开发指南](docs/开发指南.md)
-- [源码分层](src/README.md)
