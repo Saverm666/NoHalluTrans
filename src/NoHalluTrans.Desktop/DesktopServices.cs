@@ -11,6 +11,8 @@ public interface IDesktopServices
     Task<string?> PickJsonAsync();
     Task<string?> SaveAsync(string extension, string suggestedName);
     Task<bool> ConfirmAsync(string title, string message);
+    void CopyText(string text);
+    void RevealInExplorer(string path);
 }
 public sealed class DesktopServices(Window window) : IDesktopServices
 {
@@ -39,5 +41,16 @@ public sealed class DesktopServices(Window window) : IDesktopServices
     {
         var dialog = new ContentDialog { XamlRoot = window.Content.XamlRoot, Title = title, Content = message, PrimaryButtonText = "继续", CloseButtonText = "取消", DefaultButton = ContentDialogButton.Close };
         return await dialog.ShowAsync() == ContentDialogResult.Primary;
+    }
+    public void CopyText(string text)
+    {
+        var package = new Windows.ApplicationModel.DataTransfer.DataPackage();
+        package.SetText(text);
+        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(package);
+    }
+    public void RevealInExplorer(string path)
+    {
+        // Explorer expects the quoted path after the comma, not a fully quoted switch.
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("explorer.exe", $"/select,\"{Path.GetFullPath(path)}\"") { UseShellExecute = false });
     }
 }

@@ -12,6 +12,7 @@ public sealed class AppSettings
     public List<TermEntry> Terms { get; set; } = [];
     public string OutputDirectory { get; set; } = "";
     public string PdfLayout { get; set; } = "target-only";
+    public string TargetLanguage { get; set; } = "zh-Hans";
     public string WorkRoot { get; set; } = "";
     public bool AutoInstallPackages { get; set; } = true;
     public bool PackagePolicyAcknowledged { get; set; }

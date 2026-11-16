@@ -15,15 +15,21 @@
         </StackPanel>
       </NavigationView.PaneHeader>
       <NavigationView.MenuItems>
-        <NavigationViewItem Content="论文翻译" Tag="tasks" AutomationProperties.AutomationId="NavTasks"><NavigationViewItem.Icon><FontIcon Glyph="&#xE8D2;"/></NavigationViewItem.Icon></NavigationViewItem>
-        <NavigationViewItem Content="术语表" Tag="terms" AutomationProperties.AutomationId="NavTerms"><NavigationViewItem.Icon><FontIcon Glyph="&#xE82D;"/></NavigationViewItem.Icon></NavigationViewItem>
-        <NavigationViewItem Content="模型连接" Tag="model" AutomationProperties.AutomationId="NavModel"><NavigationViewItem.Icon><FontIcon Glyph="&#xE774;"/></NavigationViewItem.Icon></NavigationViewItem>
-        <NavigationViewItem Content="编译环境" Tag="environment" AutomationProperties.AutomationId="NavEnvironment"><NavigationViewItem.Icon><FontIcon Glyph="&#xE713;"/></NavigationViewItem.Icon></NavigationViewItem>
+        <NavigationViewItem Content="论文翻译" Tag="tasks" AutomationProperties.AutomationId="NavTasks" ToolTipService.ToolTip="论文翻译（Ctrl+1）"><NavigationViewItem.Icon><FontIcon Glyph="&#xE8D2;"/></NavigationViewItem.Icon>
+          <NavigationViewItem.InfoBadge><InfoBadge Value="{Binding ActiveTaskCount}" Visibility="{Binding ActiveTaskCount, Converter={StaticResource VisibleWhen}}"/></NavigationViewItem.InfoBadge>
+        </NavigationViewItem>
+        <NavigationViewItem Content="术语表" Tag="terms" AutomationProperties.AutomationId="NavTerms" ToolTipService.ToolTip="术语表（Ctrl+2）"><NavigationViewItem.Icon><FontIcon Glyph="&#xE82D;"/></NavigationViewItem.Icon></NavigationViewItem>
+        <NavigationViewItem Content="模型连接" Tag="model" AutomationProperties.AutomationId="NavModel" ToolTipService.ToolTip="模型连接（Ctrl+3）"><NavigationViewItem.Icon><FontIcon Glyph="&#xE774;"/></NavigationViewItem.Icon>
+          <NavigationViewItem.InfoBadge><InfoBadge Style="{ThemeResource AttentionDotInfoBadgeStyle}" Visibility="{Binding ModelNeedsSetup, Converter={StaticResource VisibleWhen}}" ToolTipService.ToolTip="尚未配置模型"/></NavigationViewItem.InfoBadge>
+        </NavigationViewItem>
+        <NavigationViewItem Content="编译环境" Tag="environment" AutomationProperties.AutomationId="NavEnvironment" ToolTipService.ToolTip="编译环境（Ctrl+4）"><NavigationViewItem.Icon><FontIcon Glyph="&#xE713;"/></NavigationViewItem.Icon>
+          <NavigationViewItem.InfoBadge><InfoBadge Style="{ThemeResource AttentionDotInfoBadgeStyle}" Visibility="{Binding EnvironmentNeedsSetup, Converter={StaticResource VisibleWhen}}" ToolTipService.ToolTip="编译环境未安装"/></NavigationViewItem.InfoBadge>
+        </NavigationViewItem>
       </NavigationView.MenuItems>
       <NavigationView.PaneFooter>
         <StackPanel Margin="24,12,20,24" Spacing="8">
           
-          <TextBlock Text="0.2.1" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
+          <TextBlock Text="0.3.1" FontSize="11" Foreground="{ThemeResource TextFillColorTertiaryBrush}"/>
         </StackPanel>
       </NavigationView.PaneFooter>
       <Grid Background="{ThemeResource LayerFillColorDefaultBrush}" CornerRadius="8,0,0,0" BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}" BorderThickness="1,1,0,0">
@@ -32,7 +38,10 @@
         <ContentControl Grid.RowSpan="2" x:Name="PageHost" HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"/>
         <Border Grid.Row="2" BorderBrush="{ThemeResource DividerStrokeColorDefaultBrush}" BorderThickness="0,1,0,0" Padding="28,12">
           <Grid><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-            <TextBlock Text="{Binding Notice}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Notice}"/>
+            <Grid>
+              <TextBlock Text="{Binding Notice}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Notice}" Visibility="{Binding NoticeIsError, Converter={StaticResource VisibleWhen}, ConverterParameter=inverse}"/>
+              <TextBlock Text="{Binding Notice}" FontSize="12" Foreground="{ThemeResource SystemFillColorCriticalBrush}" TextTrimming="CharacterEllipsis" ToolTipService.ToolTip="{Binding Notice}" Visibility="{Binding NoticeIsError, Converter={StaticResource VisibleWhen}}"/>
+            </Grid>
             <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="24,0,0,0"><ProgressRing IsActive="{Binding HasActiveTask}" Width="14" Height="14" Visibility="{Binding HasActiveTask, Converter={StaticResource VisibleWhen}}"/><TextBlock Text="{Binding QueueSummary}" FontSize="12" Foreground="{ThemeResource TextFillColorSecondaryBrush}"/></StackPanel>
           </Grid>
         </Border>

@@ -5,6 +5,7 @@ using NoHalluTrans.Infrastructure;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media;
 using Windows.Graphics.Imaging;
 using Windows.Storage;
@@ -20,13 +21,20 @@ internal static class DesktopVerification
         async Task CheckDropdown(ComboBox box, string name)
         {
             box.IsDropDownOpen = true; await Task.Delay(300);
-            var popup = VisualTreeHelper.GetOpenPopupsForXamlRoot(window.Surface.XamlRoot)
-                .Last(p => p.IsOpen && p.Child is FrameworkElement child && Descendants(child).OfType<ComboBoxItem>().Any());
-            var list = (FrameworkElement)popup.Child;
+            // Items are realized asynchronously; poll rather than rely on a fixed delay.
+            Popup? popup = null;
+            for (var deadline = DateTime.UtcNow.AddSeconds(2); popup is null; await Task.Delay(50))
+            {
+                popup = VisualTreeHelper.GetOpenPopupsForXamlRoot(window.Surface.XamlRoot)
+                    .LastOrDefault(p => p.IsOpen && p.Child is FrameworkElement child && Descendants(child).OfType<ComboBoxItem>().Any());
+                if (popup is null && DateTime.UtcNow > deadline) throw new InvalidOperationException($"dropdown/{name}-did-not-open (IsDropDownOpen={box.IsDropDownOpen})");
+            }
+            await Task.Delay(100);
+            var list = (FrameworkElement)popup!.Child;
             var fieldTop = box.TransformToVisual(window.Surface).TransformPoint(new Windows.Foundation.Point());
             var listTop = list.TransformToVisual(window.Surface).TransformPoint(new Windows.Foundation.Point());
-            Check(listTop.Y >= 0 && listTop.Y + list.ActualHeight <= window.Surface.ActualHeight + 2 && (listTop.Y >= fieldTop.Y + box.ActualHeight - 2 || listTop.Y + list.ActualHeight <= fieldTop.Y + 2),
-                $"dropdown/{name}-outside-field ({listTop.Y:F1} / {fieldTop.Y + box.ActualHeight:F1})");
+            Check(list.ActualHeight > 20 && listTop.Y >= 0 && listTop.Y + list.ActualHeight <= window.Surface.ActualHeight + 2 && (listTop.Y >= fieldTop.Y + box.ActualHeight - 2 || listTop.Y + list.ActualHeight <= fieldTop.Y + 2),
+                $"dropdown/{name}-outside-field ({listTop.Y:F1}+{list.ActualHeight:F1} / {fieldTop.Y:F1}-{fieldTop.Y + box.ActualHeight:F1})");
             if (!box.IsEditable && box.SelectedItem is not null)
                 Check(Descendants(box).OfType<ContentPresenter>().Any(c => c.Visibility == Visibility.Visible && Equals(c.Content, box.SelectedItem)), "dropdown/" + name + "-selection-remains-visible");
             await SaveImageAsync(window.Surface, reportDirectory, name + "-dropdown.png");
@@ -103,11 +111,14 @@ internal static class DesktopVerification
                 var baseUrlField = Descendants(window.Surface).OfType<TextBox>().Single(t => Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(t) == "ModelBaseUrl");
                 baseUrlField.Text = $"http://127.0.0.1:{((System.Net.IPEndPoint)listener.LocalEndpoint).Port}/v1";
                 apiKeyField.Password = "unsaved-key-sentinel";
+                // Let the queued TextChanged/PasswordChanged handlers run first; they reset the list, and the
+                // local server answers fast enough to otherwise race them.
+                await Task.Delay(150);
                 modelPage.FetchCurrentModels();
                 while (vm.IsFetchingModels && !modelServerDeadline.IsCancellationRequested) await Task.Delay(50);
                 await modelServer;
                 Check(true, "model/unsaved-v1-url-and-key-used-in-model-request");
-                Check(vm.AvailableModels.SequenceEqual(new[] { "example/model-a", "example/model-b" }), "model/fetch-list");
+                Check(vm.AvailableModels.SequenceEqual(new[] { "example/model-a", "example/model-b" }), $"model/fetch-list ([{string.Join(", ", vm.AvailableModels)}], model='{vm.ModelId}', result='{vm.ModelConnectionTitle}: {vm.ModelConnectionMessage}')");
                 modelSelector.SelectedItem = "example/model-b";
                 await Task.Delay(100);
                 Check(vm.ModelId == "example/model-b", "model/dropdown-selection-binding");
@@ -126,6 +137,17 @@ internal static class DesktopVerification
                 await CheckDropdown(modelSelector, "model-selector");
             }
             finally { listener.Stop(); apiKeyField.Password = ""; vm.Settings.Model.BaseUrl = originalBaseUrl; vm.ClearModelConnectionResult(); }
+            // A freshly built model page (as after reopening the app) must show, and keep, the saved model ID.
+            List<string> modelHistory = [];
+            void TrackModel(object? _, System.ComponentModel.PropertyChangedEventArgs e) { if (e.PropertyName == nameof(MainViewModel.ModelId)) modelHistory.Add(vm.ModelId); }
+            vm.PropertyChanged += TrackModel;
+            window.NavigateTo("tasks"); window.DropPage("model");
+            window.NavigateTo("model"); await Task.Delay(600);
+            vm.PropertyChanged -= TrackModel;
+            var reopenedSelector = Descendants(window.Surface).OfType<ComboBox>().Single(c => c.Name == "ModelSelector");
+            Check(vm.ModelId == "custom/manual-model" && reopenedSelector.Text == "custom/manual-model",
+                $"model/reopened-page-shows-saved-model (vm='{vm.ModelId}', text='{reopenedSelector.Text}', changes=[{string.Join(" > ", modelHistory.Select(m => "'" + m + "'"))}])");
+            await SaveImageAsync(window.Surface, reportDirectory, "model-reopened.png");
             var parameters = new Views.ModelParameters { DataContext = vm };
             var dialog = new ContentDialog { XamlRoot = window.Surface.XamlRoot, Title = "请求与翻译参数", Content = parameters, CloseButtonText = "完成" };
             var showing = dialog.ShowAsync();
@@ -155,8 +177,28 @@ internal static class DesktopVerification
             vm.SelectedTerm = vm.Terms[0];
             Check(vm.TermSource == "attention" && vm.TermTarget == "注意力", "terms/selection-populates-editor");
             vm.SelectedTerm = null;
+            Check(vm.TermSource == "attention" && vm.TermActionLabel == "添加术语" && !vm.DeleteTermCommand.CanExecute(null), "terms/deselect-keeps-editor-and-disables-delete");
+            vm.TermSource = "Attention"; vm.TermTarget = "注意力"; vm.AddTermCommand.Execute(null);
+            Check(vm.Terms.Count == 1 && vm.Terms[0].Source == "Attention" && vm.TermSource == "", "terms/update-existing-source");
+            vm.TermSearch = "no-such-term";
+            Check(vm.FilteredTerms.Count == 0 && vm.NoTermMatches, "terms/search-filter");
+            vm.TermSearch = "";
+            Check(vm.FilteredTerms.Count == 1, "terms/search-reset");
+            vm.TargetLanguage = "ja"; vm.SaveSettingsCommand.Execute(null);
+            Check(new SettingsStore(vm.DataDirectory).Load().TargetLanguage == "ja", "settings/target-language-persisted");
+            vm.TargetLanguage = "zh-Hans"; vm.SaveSettingsCommand.Execute(null);
             window.NavigateTo("tasks");
             await Task.Delay(250);
+            vm.Source = "1706.03762";
+            Check(vm.SourceHint.Contains("arXiv") && !vm.SourceHintIsWarning, "tasks/source-hint-arxiv");
+            vm.Source = Path.Combine(reportDirectory, "missing-source.zip");
+            Check(vm.SourceHintIsWarning, "tasks/source-hint-unknown");
+            vm.Source = "";
+            vm.Engine = "xelatex";
+            Check(vm.AdvancedSummary == "高级选项 · 1", "tasks/advanced-summary-counts");
+            vm.Engine = "auto";
+            Check(vm.AdvancedSummary == "高级选项", "tasks/advanced-summary-reset");
+            Check(vm.HasSetupHint == (vm.ModelNeedsSetup && vm.TranslationsFile == "" || vm.EnvironmentNeedsSetup), "tasks/setup-hint-state");
             foreach (var box in Descendants(window.Surface).OfType<ComboBox>().Where(c => c.IsLoaded && c.ActualHeight > 0).ToArray())
                 await CheckDropdown(box, "home-" + (box.Header?.ToString() ?? "select"));
             var taskParameters = new Views.TaskParameters { DataContext = vm };
@@ -219,6 +261,17 @@ internal static class DesktopVerification
             using var restored = new MainViewModel(new DesktopServices(window), Path.Combine(reportDirectory, "data"), vm.RuntimeRoot);
             Check(restored.Tasks.Count == 3 && restored.Terms.Count == 1, "history/restart");
             Check(vm.TaskCount == 3 && vm.CompletedCount == 3, "overview/live-counts");
+            Check(vm.Tasks.All(t => t.SubLabel != t.Status && t.StatusKind == "done" && t.HasOutput && !t.IsActive), "tasks/status-not-repeated");
+            Check(vm.ActiveTaskCount == 0 && !vm.HasSetupHint, "tasks/idle-and-ready");
+            var keep = vm.SelectedTask;
+            vm.TaskFilter = "failed";
+            Check(vm.FilteredTasks.Count == 0 && vm.FilteredEmpty, "tasks/filter-failed-empty");
+            vm.TaskFilter = "done";
+            Check(vm.FilteredTasks.Count == 3, "tasks/filter-done");
+            vm.TaskFilter = "all"; vm.TaskSearch = "second";
+            Check(vm.FilteredTasks.Count == 1 && vm.FilteredTasks[0].Options.Source == secondSource, "tasks/search");
+            vm.TaskSearch = "";
+            Check(vm.FilteredTasks.SequenceEqual(vm.Tasks) && vm.SelectedTask == keep, "tasks/filter-reset-keeps-selection");
             }
             await Task.Delay(250);
             await SaveImageAsync(window.Surface, reportDirectory, "desktop.png");
@@ -231,9 +284,14 @@ internal static class DesktopVerification
             foreach (string key in new[] { "tasks", "model", "terms", "environment" })
             {
                 window.NavigateTo(key); await Task.Delay(400);
-                var buttons = Descendants(window.Surface).OfType<Button>().Where(b => b.IsLoaded && b.ActualHeight > 0 && b.Visibility == Visibility.Visible).ToArray();
-                Check(buttons.All(b => { var point = b.TransformToVisual(window.Surface).TransformPoint(new Windows.Foundation.Point()); return point.Y >= 0 && point.Y + b.ActualHeight <= window.Surface.ActualHeight + 1; }), "layout/visible-controls-" + key);
+                var buttons = Descendants(window.Surface).OfType<Button>().Where(b => b.IsLoaded && b.ActualHeight > 0 && b.ActualWidth > 0 && IsShown(b, window.Surface)).ToArray();
+                var clipped = buttons.Select(b => (Button: b, Point: b.TransformToVisual(window.Surface).TransformPoint(new Windows.Foundation.Point())))
+                    .Where(x => x.Point.Y < 0 || x.Point.Y + x.Button.ActualHeight > window.Surface.ActualHeight + 1 || x.Point.X < 0 || x.Point.X + x.Button.ActualWidth > window.Surface.ActualWidth - 8)
+                    .Select(x => $"{x.Button.GetType().Name}#{x.Button.Name}/{Microsoft.UI.Xaml.Automation.AutomationProperties.GetName(x.Button)}@{x.Point.X:F0},{x.Point.Y:F0} {x.Button.ActualWidth:F0}x{x.Button.ActualHeight:F0}").ToArray();
+                Check(clipped.Length == 0, "layout/visible-controls-" + key + (clipped.Length == 0 ? "" : $" (surface {window.Surface.ActualWidth:F0}x{window.Surface.ActualHeight:F0}): " + string.Join("; ", clipped)));
                 await SaveImageAsync(window.Surface, reportDirectory, key + "-compact.png");
+                if (key == "tasks")
+                    Check(Descendants(window.Surface).OfType<ListView>().Single(l => l.Name == "TaskList").ActualHeight >= 200, "layout/task-list-min-height-compact");
                 if (key == "tasks")
                     foreach (var box in Descendants(window.Surface).OfType<ComboBox>().Where(c => c.IsLoaded && c.ActualHeight > 0 && c.Visibility == Visibility.Visible).ToArray())
                         await CheckDropdown(box, "compact-" + box.Header);
@@ -258,6 +316,13 @@ internal static class DesktopVerification
             Environment.ExitCode = exitCode;
             window.Close(); app.Exit();
         }
+    }
+    /// <summary>True when the element and every ancestor up to <paramref name="root"/> are visible and not transparent.</summary>
+    private static bool IsShown(UIElement element, UIElement root)
+    {
+        for (DependencyObject? node = element; node is not null && !ReferenceEquals(node, root); node = VisualTreeHelper.GetParent(node))
+            if (node is UIElement ui && (ui.Visibility != Visibility.Visible || ui.Opacity == 0)) return false;
+        return true;
     }
     private static IEnumerable<DependencyObject> Descendants(DependencyObject parent)
     {

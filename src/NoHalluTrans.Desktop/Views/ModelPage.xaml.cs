@@ -5,9 +5,13 @@ public sealed partial class ModelPage : UserControl
 {
     private bool fieldsInitialized;
     private string? lastBaseUrl;
+    private string? savedModel;
     public ModelPage()
     {
         InitializeComponent();
+        // The editable ComboBox writes an empty Text back through its two-way binding while its template
+        // is applied, which would wipe the saved model ID. Remember it before that and restore after load.
+        DataContextChanged += (_, _) => { if (!fieldsInitialized && DataContext is MainViewModel vm) savedModel ??= vm.ModelId; };
         Loaded += (_, _) =>
         {
             if (DataContext is not MainViewModel vm) return;
@@ -16,10 +20,24 @@ public sealed partial class ModelPage : UserControl
                 ApiKeyBox.Password = vm.Settings.Model.ApiKey;
                 lastBaseUrl = vm.Settings.Model.BaseUrl;
                 fieldsInitialized = true;
+                if (!string.IsNullOrEmpty(savedModel) && string.IsNullOrEmpty(vm.ModelId)) vm.ModelId = savedModel;
             }
-            if (ModelSelector.Text != vm.ModelId) ModelSelector.Text = vm.ModelId;
+            ShowModel(vm);
+            // Item containers are realized after Loaded; check once more on the next frame.
+            DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                if (!string.IsNullOrEmpty(savedModel) && string.IsNullOrEmpty(vm.ModelId)) vm.ModelId = savedModel;
+                ShowModel(vm);
+                savedModel = null;
+            });
         };
         Unloaded += (_, _) => SyncCurrentFields();
+    }
+    private void ShowModel(MainViewModel vm)
+    {
+        string model = vm.ModelId;
+        if (vm.AvailableModels.Contains(model) && !Equals(ModelSelector.SelectedItem, model)) ModelSelector.SelectedItem = model;
+        if (ModelSelector.Text != model) ModelSelector.Text = model;
     }
     private void SyncCurrentFields()
     {

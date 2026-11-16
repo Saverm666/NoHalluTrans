@@ -11,7 +11,30 @@ public sealed class AnchoredComboBox : ComboBox
     private Popup? listPopup;
     private long verticalToken, horizontalToken;
     private bool positioning;
+    private int positionRetries;
     private ContentPresenter? openSelection;
+    private TextBox? editableText;
+    private Point pressPoint;
+    private bool focusedByPointer;
+    /// <summary>
+    /// The editable ComboBox selects all text when it takes focus. For a mouse click, replace that
+    /// select-all with a caret at the clicked character; a drag selection or keyboard focus is left alone.
+    /// </summary>
+    private void PlaceCaretAtPress(TextBox editor)
+    {
+        focusedByPointer = false;
+        int length = editor.Text.Length;
+        if (length == 0 || editor.SelectionLength != length) return;
+        int caret = 0;
+        while (caret < length)
+        {
+            var lead = editor.GetRectFromCharacterIndex(caret, false);
+            var trail = editor.GetRectFromCharacterIndex(caret, true);
+            if ((lead.X + trail.X) / 2 > pressPoint.X) break;
+            caret++;
+        }
+        editor.Select(caret, 0);
+    }
     public AnchoredComboBox()
     {
         DefaultStyleKey = typeof(ComboBox);
@@ -42,6 +65,13 @@ public sealed class AnchoredComboBox : ComboBox
             Grid.SetRow(openSelection, 1); Grid.SetColumn(openSelection, 0);
             root.Children.Add(openSelection);
         }
+        if (GetTemplateChild("EditableText") is TextBox editor && !ReferenceEquals(editor, editableText))
+        {
+            editableText = editor;
+            editor.AddHandler(PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, e) => pressPoint = e.GetCurrentPoint(editor).Position), true);
+            editor.AddHandler(PointerReleasedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => { if (focusedByPointer) DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => PlaceCaretAtPress(editor)); }), true);
+            editor.GotFocus += (_, _) => focusedByPointer = editor.FocusState == FocusState.Pointer;
+        }
         listPopup = GetTemplateChild("Popup") as Popup;
         if (listPopup is not null)
         {
@@ -59,12 +89,24 @@ public sealed class AnchoredComboBox : ComboBox
             Point root = field.TransformToVisual(XamlRoot.Content).TransformPoint(new Point());
             double below = Math.Max(0, XamlRoot.Size.Height - root.Y - field.ActualHeight - 8);
             double above = Math.Max(0, root.Y - 8);
-            bool openBelow = below >= Math.Min(MaxDropDownHeight, 160) || below >= above;
+            // Size the list from its items rather than ActualHeight, which is stale or zero while the popup opens.
+            double itemHeight = ContainerFromIndex(0) is FrameworkElement { ActualHeight: > 0 } first ? first.ActualHeight : 37;
+            double natural = Math.Min(MaxDropDownHeight, Math.Max(1, Items.Count) * itemHeight + 12);
+            // Prefer below: a list that fits, or one that can scroll in at least 160px, stays under the field.
+            bool openBelow = below >= Math.Min(natural, 160) || below >= above;
             double height = Math.Min(MaxDropDownHeight, openBelow ? below : above);
+            // While the popup opens, layout can briefly report an unplaced field; clamping to that would
+            // collapse the list. Retry on the next frame instead (bounded, so a genuinely tiny window still settles).
+            if ((field.ActualHeight <= 0 || XamlRoot.Size.Height <= 0 || height < 48) && positionRetries++ < 5)
+            {
+                DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, PositionList);
+                return;
+            }
+            positionRetries = 0;
             if (listPopup.Child is FrameworkElement content)
             {
-                content.MaxHeight = height;
-                double listHeight = Math.Min(content.ActualHeight > 0 ? content.ActualHeight : height, height);
+                if (content.MaxHeight != height) content.MaxHeight = height;
+                double listHeight = Math.Min(natural, height);
                 listPopup.VerticalOffset = openBelow ? local.Y + field.ActualHeight + 4 : local.Y - listHeight - 4;
             }
             listPopup.HorizontalOffset = local.X;

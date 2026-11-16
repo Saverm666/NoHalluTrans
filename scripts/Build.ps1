@@ -134,7 +134,7 @@ if (!$reusedApp -and $dependencyManifest) {
 # TeX Live's license files are included in the runtime; .NET's notices are copied by self-contained publish.
 $files = Get-ChildItem $release -File -Recurse
 $texManifest = if ($IncludeTex) { Get-Content (Join-Path $TexRoot 'hjfy-runtime.json') -Raw | ConvertFrom-Json } else { $null }
-$manifest = @{ version='0.2.1'; layout='launcher-app'; includes_tex=[bool]$IncludeTex; tex_preparation=$(if ($IncludeTex) {'ready-to-use'} else {'download-on-demand'}); target='win-x64'; self_contained=$true; python_required=$false; unpacked_bytes=($files | Measure-Object Length -Sum).Sum; file_count=$files.Count; tex_runtime=$texManifest }
+$manifest = @{ version='0.3.1'; layout='launcher-app'; includes_tex=[bool]$IncludeTex; tex_preparation=$(if ($IncludeTex) {'ready-to-use'} else {'download-on-demand'}); target='win-x64'; self_contained=$true; python_required=$false; unpacked_bytes=($files | Measure-Object Length -Sum).Sum; file_count=$files.Count; tex_runtime=$texManifest }
 $manifest | ConvertTo-Json -Depth 5 | Set-Content (Join-Path $app 'release-manifest.json') -Encoding UTF8
 # Keep all portable user data when replacing the application folder.
 foreach ($name in @('data', 'work', 'output')) {

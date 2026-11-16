@@ -13,7 +13,7 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AssemblyName>NoHalluTrans</AssemblyName>
     <RootNamespace>NoHalluTrans.Desktop</RootNamespace>
-    <Version>0.2.1</Version>
+    <Version>0.3.1</Version>
     <SatelliteResourceLanguages>zh-Hans;zh-Hant;en</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>

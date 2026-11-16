@@ -216,7 +216,7 @@ public sealed class TexRuntimeInstaller(HttpClient http, Func<IProgress<string>,
     private static HttpRequestMessage DownloadRequest(Uri address)
     {
         var request = new HttpRequestMessage(HttpMethod.Get, address);
-        request.Headers.UserAgent.ParseAdd("HJFY/0.2.1");
+        request.Headers.UserAgent.ParseAdd("HJFY/0.3.1");
         return request;
     }
     private static void CheckDownloadResponse(HttpResponseMessage response)

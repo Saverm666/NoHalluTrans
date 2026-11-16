@@ -35,6 +35,23 @@ public sealed partial class MainWindow : Window
         AppWindow.Closing += AppWindow_Closing;
         Navigation.SelectedItem = Navigation.MenuItems.OfType<NavigationViewItem>().First();
         NavigateTo("tasks");
+        RegisterShortcuts();
+    }
+    /// <summary>Ctrl+1..4 switch pages; Ctrl+N focuses the paper source box.</summary>
+    private void RegisterShortcuts()
+    {
+        string[] keys = ["tasks", "terms", "model", "environment"];
+        for (int i = 0; i < keys.Length; i++)
+        {
+            string key = keys[i];
+            var accelerator = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = Windows.System.VirtualKey.Number1 + i, Modifiers = Windows.System.VirtualKeyModifiers.Control };
+            accelerator.Invoked += (_, e) => { e.Handled = true; NavigateTo(key); };
+            Root.KeyboardAccelerators.Add(accelerator);
+        }
+        var newTask = new Microsoft.UI.Xaml.Input.KeyboardAccelerator { Key = Windows.System.VirtualKey.N, Modifiers = Windows.System.VirtualKeyModifiers.Control };
+        newTask.Invoked += (_, e) => { e.Handled = true; NavigateTo("tasks"); (pages["tasks"] as TasksPage)?.FocusSource(); };
+        Root.KeyboardAccelerators.Add(newTask);
+        Root.KeyboardAcceleratorPlacementMode = Microsoft.UI.Xaml.Input.KeyboardAcceleratorPlacementMode.Hidden;
     }
     public void NavigateTo(string key)
     {
@@ -46,6 +63,12 @@ public sealed partial class MainWindow : Window
         CurrentPage = key; PageHost.Content = page;
         var item = Navigation.MenuItems.OfType<NavigationViewItem>().First(i => i.Tag as string == key);
         if (!ReferenceEquals(Navigation.SelectedItem, item)) Navigation.SelectedItem = item;
+    }
+    /// <summary>Verification hook: forget a cached page so the next navigation builds it fresh, as after a restart.</summary>
+    internal void DropPage(string key)
+    {
+        if (CurrentPage == key) PageHost.Content = null;
+        pages.Remove(key);
     }
     private void Navigation_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     { if (Model is not null && args.SelectedItemContainer?.Tag is string key) NavigateTo(key); }

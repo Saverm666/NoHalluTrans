@@ -20,9 +20,28 @@ public sealed class TaskItem : Observable
     public List<TermEntry> Terms { get; set; } = [];
     public string WorkDirectory { get; set; } = "";
     private string status = "排队中";
-    public string Status { get => status; set { if (Set(ref status, value)) { Changed(nameof(StageLabel)); Changed(nameof(IsIndeterminate)); } } }
+    public string Status
+    {
+        get => status;
+        set
+        {
+            if (!Set(ref status, value)) return;
+            foreach (string name in new[] { nameof(StageLabel), nameof(IsIndeterminate), nameof(StatusKind), nameof(IsActive), nameof(SubLabel), nameof(HasOutput) }) Changed(name);
+        }
+    }
     private string detail = "等待开始";
-    public string Detail { get => detail; set => Set(ref detail, value); }
+    public string Detail { get => detail; set { if (Set(ref detail, value)) Changed(nameof(SubLabel)); } }
+    /// <summary>Status colour group: running, queued, done, warning, failed or idle.</summary>
+    [JsonIgnore] public string StatusKind => Status switch
+    {
+        "运行中" => "running", "排队中" => "queued", "已完成" => "done",
+        "完成，需检查" or "请选择主文件" => "warning", "失败" => "failed", _ => "idle"
+    };
+    [JsonIgnore] public bool IsActive => Status is "运行中" or "排队中";
+    [JsonIgnore] public bool HasOutput => File.Exists(Options.OutputPdf);
+    [JsonIgnore] public string MetaLabel => $"{LabelConverter.Label(Options.TargetLanguage)} · {LabelConverter.Label(Options.PdfLayout)} · {CreatedLabel}";
+    /// <summary>The list's second line; avoids repeating the status shown in the pill.</summary>
+    [JsonIgnore] public string SubLabel => Status == "运行中" ? $"{StageLabel} · {Detail}" : Detail;
     private double percent;
     public double Percent { get => percent; set => Set(ref percent, value); }
     public PipelineResult? Result { get; set; }
@@ -48,6 +67,7 @@ public sealed class TaskItem : Observable
     [JsonIgnore] public string BlockSummary => FragmentCount < 0 ? "正文尚未切分" : StageId == "parse"
         ? $"已扫描 {ScannedFiles}/{TotalFiles} 个文件 · 已切分 {FragmentCount} 块"
         : $"已切分 {FragmentCount} 块 · 已处理 {CompletedBlocks}/{FragmentCount}\n新译 {TranslatedBlocks} · 缓存 {CachedBlocks} · 保留原文 {FallbackBlocks}";
+    [JsonIgnore] public string BlockSummaryInline => BlockSummary.Replace("\n", " · ");
     [JsonIgnore] public bool IsIndeterminate => Status == "运行中" && !(StageId == "translate" && FragmentCount > 0 || StageId == "parse" && TotalFiles > 0);
     public void ApplyProgress(PipelineEvent value)
     {
@@ -63,13 +83,13 @@ public sealed class TaskItem : Observable
             Percent = total > 0 ? 100d * completed / total : 0;
         }
         Detail = value.Message;
-        Changed(nameof(StageLabel)); Changed(nameof(BlockSummary)); Changed(nameof(IsIndeterminate));
+        Changed(nameof(StageLabel)); Changed(nameof(BlockSummary)); Changed(nameof(BlockSummaryInline)); Changed(nameof(IsIndeterminate)); Changed(nameof(SubLabel));
     }
     public void ResetProgress()
     {
         StageId = ""; FragmentCount = -1; CompletedBlocks = TranslatedBlocks = CachedBlocks = FallbackBlocks = ScannedFiles = TotalFiles = 0;
         Percent = 0;
-        Changed(nameof(StageLabel)); Changed(nameof(BlockSummary)); Changed(nameof(IsIndeterminate));
+        Changed(nameof(StageLabel)); Changed(nameof(BlockSummary)); Changed(nameof(BlockSummaryInline)); Changed(nameof(IsIndeterminate));
     }
     [JsonIgnore] public string Title => Path.GetFileName(Options.Source.TrimEnd('/', '\\')) is { Length: > 0 } title ? title : Options.Source;
     [JsonIgnore] public string CreatedLabel => Created.ToLocalTime().ToString("MM-dd HH:mm");
@@ -107,18 +127,94 @@ public sealed class MainViewModel : Observable, IDisposable
     public string RuntimeRoot => runtimeRoot;
     public event Action<string>? NavigationRequested;
     public string DataDirectory => store.DataDirectory;
-    private string source = "", sourceLanguage = "en", targetLanguage = "zh-Hans", engine = "auto", mainHint = "", translationsFile = "";
-    public string Source { get => source; set => Set(ref source, value); }
+    private string source = "", sourceLanguage = "en", engine = "auto", mainHint = "", translationsFile = "";
+    private bool allowShellEscape, autoTerminology;
+    public string Source { get => source; set { if (Set(ref source, value)) { Changed(nameof(SourceHint)); Changed(nameof(SourceHintIsWarning)); } } }
     public string OutputDirectory { get => Settings.OutputDirectory; set { if (Settings.OutputDirectory == value) return; Settings.OutputDirectory = value; Changed(); } }
     public string[] PdfLayouts { get; } = ["target-only", "alternating", "side-by-side"];
     public string PdfLayout { get => Settings.PdfLayout; set { if (Settings.PdfLayout == value) return; Settings.PdfLayout = value; Changed(); } }
-    public string TargetLanguage { get => targetLanguage; set => Set(ref targetLanguage, value); }
-    public string SourceLanguage { get => sourceLanguage; set => Set(ref sourceLanguage, value); }
-    public string Engine { get => engine; set => Set(ref engine, value); }
-    public string MainHint { get => mainHint; set => Set(ref mainHint, value); }
-    public string TranslationsFile { get => translationsFile; set => Set(ref translationsFile, value); }
-    public bool AllowShellEscape { get; set; }
-    public bool AutoTerminology { get; set; }
+    public string TargetLanguage { get => Settings.TargetLanguage; set { if (Settings.TargetLanguage == value) return; Settings.TargetLanguage = value; Changed(); } }
+    public string SourceLanguage { get => sourceLanguage; set { if (Set(ref sourceLanguage, value)) Changed(nameof(AdvancedSummary)); } }
+    public string Engine { get => engine; set { if (Set(ref engine, value)) Changed(nameof(AdvancedSummary)); } }
+    public string MainHint { get => mainHint; set { if (Set(ref mainHint, value)) Changed(nameof(AdvancedSummary)); } }
+    public string TranslationsFile { get => translationsFile; set { if (Set(ref translationsFile, value)) { Changed(nameof(AdvancedSummary)); RefreshSetupHint(); } } }
+    public bool AllowShellEscape { get => allowShellEscape; set { if (Set(ref allowShellEscape, value)) Changed(nameof(AdvancedSummary)); } }
+    public bool AutoTerminology { get => autoTerminology; set { if (Set(ref autoTerminology, value)) Changed(nameof(AdvancedSummary)); } }
+    /// <summary>One-line description of what the source box will be read as.</summary>
+    public string SourceHint
+    {
+        get
+        {
+            string value = Source.Trim().Trim('"');
+            if (value.Length == 0) return "可输入 arXiv 编号或链接，也可拖入源码。";
+            if (SourceAcquirer.ArxivId(value) is { } id) return "arXiv 论文 " + id + "，将联网下载源码。";
+            if (Directory.Exists(value)) return "本地工程文件夹。";
+            if (File.Exists(value)) return Path.GetExtension(value).Equals(".tex", StringComparison.OrdinalIgnoreCase) ? "本地 TeX 文件，将使用其所在文件夹。" : "本地源码压缩包。";
+            if (Uri.TryCreate(value, UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https") return "源码下载链接。";
+            return "无法识别：请检查 arXiv 编号或本地路径是否存在。";
+        }
+    }
+    public bool SourceHintIsWarning => SourceHint.StartsWith("无法识别", StringComparison.Ordinal);
+    public string AdvancedSummary
+    {
+        get
+        {
+            int changed = new[] { SourceLanguage != "en", Engine != "auto", !string.IsNullOrWhiteSpace(MainHint), !string.IsNullOrWhiteSpace(TranslationsFile), AutoTerminology, AllowShellEscape }.Count(b => b);
+            return changed == 0 ? "高级选项" : $"高级选项 · {changed}";
+        }
+    }
+    private string setupHint = "", setupHintTarget = "";
+    /// <summary>First missing prerequisite for starting a translation, or empty when ready.</summary>
+    public string SetupHint { get => setupHint; private set { if (Set(ref setupHint, value)) Changed(nameof(HasSetupHint)); } }
+    public string SetupHintTarget { get => setupHintTarget; private set => Set(ref setupHintTarget, value); }
+    public bool HasSetupHint => SetupHint.Length > 0;
+    public bool ModelNeedsSetup => !Uri.TryCreate(Settings.Model.BaseUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") || string.IsNullOrWhiteSpace(Settings.Model.Model);
+    public bool EnvironmentNeedsSetup => !TexRuntimeBundle.IsAvailable(runtimeRoot);
+    public void RefreshSetupHint()
+    {
+        Changed(nameof(ModelNeedsSetup)); Changed(nameof(EnvironmentNeedsSetup));
+        if (ModelNeedsSetup && TranslationsFile == "") { SetupHintTarget = "model"; SetupHint = "尚未配置翻译模型，请先填写接口地址与模型 ID。"; }
+        else if (EnvironmentNeedsSetup) { SetupHintTarget = "environment"; SetupHint = "编译环境尚未安装，首次翻译前需要下载。"; }
+        else { SetupHintTarget = ""; SetupHint = ""; }
+    }
+    public void RequestNavigation(string key) => NavigationRequested?.Invoke(key);
+    public ObservableCollection<TaskItem> FilteredTasks { get; } = [];
+    public string[] TaskFilters { get; } = ["all", "active", "done", "failed"];
+    private string taskFilter = "all", taskSearch = "";
+    public string TaskFilter { get => taskFilter; set { if (Set(ref taskFilter, value)) SyncFilteredTasks(); } }
+    public string TaskSearch { get => taskSearch; set { if (Set(ref taskSearch, value)) SyncFilteredTasks(); } }
+    public bool FilteredEmpty => Tasks.Count > 0 && FilteredTasks.Count == 0;
+    public int ActiveTaskCount => Tasks.Count(t => t.IsActive);
+    public bool HasFinishedTasks => Tasks.Any(t => !t.IsActive);
+    private bool MatchesFilter(TaskItem task) => (TaskFilter switch
+    {
+        "active" => task.IsActive,
+        "done" => task.Status is "已完成" or "完成，需检查",
+        "failed" => task.Status is "失败" or "已取消" or "已中断" or "请选择主文件",
+        _ => true
+    }) && (string.IsNullOrWhiteSpace(TaskSearch) || task.Title.Contains(TaskSearch.Trim(), StringComparison.OrdinalIgnoreCase)
+        || task.Options.Source.Contains(TaskSearch.Trim(), StringComparison.OrdinalIgnoreCase));
+    /// <summary>Updates the visible list in place, so the ListView keeps its selection.</summary>
+    private TaskItem? hiddenSelection;
+    private void SyncFilteredTasks()
+    {
+        // The ListView clears its selection when the selected task is filtered out; restore it when it reappears.
+        var keep = SelectedTask ?? hiddenSelection;
+        var desired = Tasks.Where(MatchesFilter).ToList();
+        for (int i = FilteredTasks.Count - 1; i >= 0; i--) if (!desired.Contains(FilteredTasks[i])) FilteredTasks.RemoveAt(i);
+        for (int i = 0; i < desired.Count; i++)
+        {
+            if (i < FilteredTasks.Count && ReferenceEquals(FilteredTasks[i], desired[i])) continue;
+            int existing = FilteredTasks.IndexOf(desired[i]);
+            if (existing >= 0) FilteredTasks.Move(existing, i); else FilteredTasks.Insert(i, desired[i]);
+        }
+        hiddenSelection = keep is not null && Tasks.Contains(keep) && !desired.Contains(keep) ? keep : null;
+        if (keep is not null && desired.Contains(keep) && !ReferenceEquals(SelectedTask, keep)) SelectedTask = keep;
+        Changed(nameof(FilteredEmpty));
+    }
+    private bool isLogExpanded;
+    private DateTime lastLogRefresh;
+    public bool IsLogExpanded { get => isLogExpanded; set { if (Set(ref isLogExpanded, value) && value) RefreshDetails(); } }
     private string notice = "";
     public string Notice { get => notice; set { if (Set(ref notice, value)) NoticeIsError = false; } }
     private bool noticeIsError;
@@ -128,7 +224,7 @@ public sealed class MainViewModel : Observable, IDisposable
     public string ModelId
     {
         get => Settings.Model.Model;
-        set { if (Settings.Model.Model != value) { Settings.Model.Model = value; Changed(); ClearModelConnectionResult(); } }
+        set { if (Settings.Model.Model != value) { Settings.Model.Model = value; Changed(); ClearModelConnectionResult(); RefreshSetupHint(); } }
     }
     public bool IsFetchingModels { get => isFetchingModels; private set { if (Set(ref isFetchingModels, value)) Changed(nameof(CanEditModelConnection)); } }
     private string modelConnectionTitle = "", modelConnectionMessage = "";
@@ -157,10 +253,29 @@ public sealed class MainViewModel : Observable, IDisposable
         get => selectedTerm;
         set
         {
-            if (!Set(ref selectedTerm, value) || value is null) return;
+            if (!Set(ref selectedTerm, value)) return;
+            Changed(nameof(HasSelectedTerm)); Changed(nameof(TermActionLabel)); CommandHub.Refresh();
+            if (value is null) return;
             TermSource = value.Source; TermTarget = value.Target; TermCaseSensitive = value.CaseSensitive;
         }
     }
+    public bool HasSelectedTerm => SelectedTerm is not null;
+    public string TermActionLabel => SelectedTerm is null ? "添加术语" : "更新术语";
+    public ObservableCollection<TermEntry> FilteredTerms { get; } = [];
+    private string termSearch = "";
+    public string TermSearch { get => termSearch; set { if (Set(ref termSearch, value)) SyncFilteredTerms(); } }
+    private void SyncFilteredTerms()
+    {
+        string query = TermSearch.Trim();
+        var desired = Terms.Where(t => query.Length == 0 || t.Source.Contains(query, StringComparison.OrdinalIgnoreCase) || t.Target.Contains(query, StringComparison.OrdinalIgnoreCase)).ToList();
+        var keep = SelectedTerm;
+        FilteredTerms.Clear();
+        foreach (var term in desired) FilteredTerms.Add(term);
+        if (keep is not null && desired.Contains(keep)) SelectedTerm = keep;
+        Changed(nameof(NoTermMatches));
+    }
+    public bool NoTermMatches => Terms.Count > 0 && FilteredTerms.Count == 0;
+    private void ClearTermEditor() { SelectedTerm = null; TermSource = ""; TermTarget = ""; TermCaseSensitive = false; }
     private string termSource = "", termTarget = "";
     private bool termCaseSensitive;
     public string TermSource { get => termSource; set => Set(ref termSource, value); }
@@ -191,6 +306,11 @@ public sealed class MainViewModel : Observable, IDisposable
     public ICommand DeleteTermCommand { get; }
     public ICommand ImportTermsCommand { get; }
     public ICommand ExportTermsCommand { get; }
+    public ICommand NewTermCommand { get; }
+    public ICommand RevealPdfCommand { get; }
+    public ICommand CopyOutputPathCommand { get; }
+    public ICommand ClearFinishedCommand { get; }
+    public ICommand CancelQueuedCommand { get; }
     public bool HasActiveTask => pumping;
     public string AddTaskLabel => HasActiveTask ? "加入队列" : "开始翻译";
     public MainViewModel(IDesktopServices dialogs, string? dataDirectory = null, string? texRoot = null)
@@ -231,17 +351,33 @@ public sealed class MainViewModel : Observable, IDisposable
         AddTermCommand = new RelayCommand(() => Guard(() =>
         {
             if (string.IsNullOrWhiteSpace(TermSource) || string.IsNullOrWhiteSpace(TermTarget)) throw new ArgumentException("请填写原词与译词。");
-            if (SelectedTerm is not null) Terms.Remove(SelectedTerm);
-            Terms.Add(new(TermSource.Trim(), TermTarget.Trim(), TermCaseSensitive)); SaveSettings();
+            var entry = new TermEntry(TermSource.Trim(), TermTarget.Trim(), TermCaseSensitive);
+            // Without a selection, a term with the same source text is updated instead of duplicated.
+            var existing = SelectedTerm ?? Terms.FirstOrDefault(t => string.Equals(t.Source, entry.Source, entry.CaseSensitive || t.CaseSensitive ? StringComparison.Ordinal : StringComparison.OrdinalIgnoreCase));
+            int index = existing is null ? -1 : Terms.IndexOf(existing);
+            if (index >= 0) Terms[index] = entry; else Terms.Add(entry);
+            SaveSettings(); ClearTermEditor();
+            Notice = index >= 0 ? "已更新术语：" + entry.Source : "已添加术语：" + entry.Source;
         }));
-        DeleteTermCommand = new RelayCommand(() => Guard(() => { if (SelectedTerm is not null) Terms.Remove(SelectedTerm); SaveSettings(); }));
+        DeleteTermCommand = new RelayCommand(() => Guard(() => { if (SelectedTerm is not null) Terms.Remove(SelectedTerm); ClearTermEditor(); SaveSettings(); }), () => SelectedTerm is not null);
+        NewTermCommand = new RelayCommand(ClearTermEditor);
+        RevealPdfCommand = new RelayCommand(() => Guard(() => dialogs.RevealInExplorer(SelectedTask!.Options.OutputPdf)), () => SelectedTask?.HasOutput == true);
+        CopyOutputPathCommand = new RelayCommand(() => Guard(() => { dialogs.CopyText(SelectedTask!.Options.OutputPdf); Notice = "已复制输出路径。"; }), () => SelectedTask is not null);
+        ClearFinishedCommand = new RelayCommand(() => Guard(ClearFinished), () => HasFinishedTasks);
+        CancelQueuedCommand = new RelayCommand(() => Guard(() =>
+        {
+            foreach (var task in Tasks.Where(t => t.Status == "排队中")) { task.Status = "已取消"; task.Detail = "已移出队列。"; }
+            SaveHistory(); Notice = "已取消全部排队任务。";
+        }), () => Tasks.Any(t => t.Status == "排队中"));
         ImportTermsCommand = new AsyncCommand(ImportTermsAsync, Error);
         ExportTermsCommand = new AsyncCommand(async () =>
         {
             if (await dialogs.SaveAsync(".json", "terminology") is { } path) FileStore.WriteText(path, JsonSerializer.Serialize(Terms, JsonDefaults.Options));
         }, Error);
-        Tasks.CollectionChanged += (_, _) => RefreshOverview();
+        Tasks.CollectionChanged += (_, _) => { SyncFilteredTasks(); RefreshOverview(); };
+        Terms.CollectionChanged += (_, _) => SyncFilteredTerms();
         foreach (var task in Tasks) ObserveTask(task);
+        SyncFilteredTasks(); SyncFilteredTerms(); RefreshSetupHint();
         if (!IsEnvironmentReady) EnvironmentReport = "点击“下载环境”开始安装。";
     }
     public void SetDroppedSource(string path) { Source = path; Notice = "已导入：" + Path.GetFileName(path); }
@@ -313,7 +449,7 @@ public sealed class MainViewModel : Observable, IDisposable
                     {
                         if (task.Status != "运行中") return;
                         task.ApplyProgress(e);
-                        if (SelectedTask == task && e.Type is "stage" or "issue") RefreshDetails();
+                        if (SelectedTask == task && (e.Type is "stage" or "issue" || IsLogExpanded && DateTime.UtcNow - lastLogRefresh > TimeSpan.FromSeconds(1))) RefreshDetails();
                     });
                     task.Result = await Task.Run(() => new TranslationPipeline(http, runtime, runner).RunAsync(task.Options, task.Model,
                         task.Terms, task.WorkDirectory, store.CachePath, progress, activeCancellation.Token));
@@ -336,7 +472,7 @@ public sealed class MainViewModel : Observable, IDisposable
             }
         }
         catch (Exception ex) { Error(ex); }
-        finally { pumping = false; Changed(nameof(HasActiveTask)); RefreshOverview(); }
+        finally { pumping = false; Changed(nameof(HasActiveTask)); RefreshOverview(); RefreshSetupHint(); }
     }
     private void CancelSelected()
     {
@@ -358,21 +494,41 @@ public sealed class MainViewModel : Observable, IDisposable
     }
     private void DeleteSelected()
     {
-        if (SelectedTask is not { } task || task.Status is "运行中" or "排队中") return;
-        int index = Tasks.IndexOf(task);
+        if (SelectedTask is not { } task || task.IsActive) return;
+        int index = FilteredTasks.IndexOf(task);
         Tasks.Remove(task);
-        SelectedTask = Tasks.Count == 0 ? null : Tasks[Math.Min(index, Tasks.Count - 1)];
+        SelectedTask = FilteredTasks.Count == 0 ? null : FilteredTasks[Math.Clamp(index, 0, FilteredTasks.Count - 1)];
         SaveHistory();
         RefreshOverview();
+        DeleteWorkDirectory(task);
+        Notice = "已删除任务及其工作目录。";
+    }
+    /// <summary>Removes every task that is not running or queued, with its work directory.</summary>
+    private void ClearFinished()
+    {
+        var finished = Tasks.Where(t => !t.IsActive).ToList();
+        if (SelectedTask is { } selected && finished.Contains(selected)) SelectedTask = null;
+        foreach (var task in finished) Tasks.Remove(task);
+        SaveHistory(); RefreshOverview();
+        List<string> failures = [];
+        foreach (var task in finished)
+        {
+            try { DeleteWorkDirectory(task); }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { failures.Add(task.Title); }
+        }
+        Notice = failures.Count == 0 ? $"已清除 {finished.Count} 个已结束任务。" : $"已清除任务记录；{failures.Count} 个工作目录无法删除：{string.Join("、", failures)}";
+    }
+    private static void DeleteWorkDirectory(TaskItem task)
+    {
         if (!string.IsNullOrWhiteSpace(task.WorkDirectory) && Directory.Exists(task.WorkDirectory))
         {
             Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
             Directory.Delete(task.WorkDirectory, recursive: true);
         }
-        Notice = "已删除任务及其工作目录。";
     }
     private void RefreshDetails()
     {
+        lastLogRefresh = DateTime.UtcNow;
         Changed(nameof(CanDeleteSelectedTask));
         if (SelectedTask is not { } task) { TaskLog = "选择一个任务查看详情。"; return; }
         string text = $"{task.Title}\n{task.Status} · {task.StageLabel}\n{task.BlockSummary}\n{task.Detail}\n\n来源：{task.Options.Source}\n输出：{task.Options.OutputPdf}\n工作目录：{task.WorkDirectory}\n";
@@ -460,7 +616,7 @@ public sealed class MainViewModel : Observable, IDisposable
     private void SaveSettings()
     {
         Settings.Terms = Terms.ToList(); Settings.PackagePolicyAcknowledged = true; store.Save(Settings);
-        Notice = "设置已保存。";
+        Notice = "设置已保存。"; RefreshSetupHint();
     }
     private async Task CheckEnvironmentAsync()
     {
@@ -478,7 +634,7 @@ public sealed class MainViewModel : Observable, IDisposable
         finally { environmentCancellation.Dispose(); environmentCancellation = null; IsEnvironmentBusy = false; RefreshEnvironmentState(); }
     }
     private void RefreshEnvironmentState()
-    { Changed(nameof(IsEnvironmentReady)); Changed(nameof(EnvironmentSetupLabel)); Changed(nameof(EnvironmentSummary)); }
+    { Changed(nameof(IsEnvironmentReady)); Changed(nameof(EnvironmentSetupLabel)); Changed(nameof(EnvironmentSummary)); RefreshSetupHint(); }
     private async Task<bool> InstallEnvironmentAsync()
     {
         if (!CanManageEnvironment) return false;
@@ -540,8 +696,16 @@ public sealed class MainViewModel : Observable, IDisposable
     public int TaskCount => Tasks.Count;
     public int CompletedCount => Tasks.Count(t => t.Status is "已完成" or "完成，需检查");
     public string QueueSummary => HasActiveTask ? "正在处理 · 其余任务依次排队" : Tasks.Any(t => t.Status == "排队中") ? "等待处理" : "准备就绪";
-    private void ObserveTask(TaskItem task) => task.PropertyChanged += (_, _) => RefreshOverview();
-    private void RefreshOverview() { Changed(nameof(TaskCount)); Changed(nameof(CompletedCount)); Changed(nameof(QueueSummary)); Changed(nameof(AddTaskLabel)); Changed(nameof(CanManageEnvironment)); CommandHub.Refresh(); }
+    private void ObserveTask(TaskItem task) => task.PropertyChanged += (_, e) =>
+    {
+        if (e.PropertyName == nameof(TaskItem.Status)) SyncFilteredTasks();
+        RefreshOverview();
+    };
+    private void RefreshOverview()
+    {
+        foreach (string name in new[] { nameof(TaskCount), nameof(CompletedCount), nameof(QueueSummary), nameof(AddTaskLabel), nameof(CanManageEnvironment), nameof(ActiveTaskCount), nameof(HasFinishedTasks), nameof(FilteredEmpty) }) Changed(name);
+        CommandHub.Refresh();
+    }
     public void CancelAll() { activeCancellation?.Cancel(); environmentCancellation?.Cancel(); foreach (var task in Tasks.Where(t => t.Status == "排队中")) task.Status = "已中断"; SaveHistory(); }
     public void Dispose() { activeCancellation?.Cancel(); environmentCancellation?.Cancel(); http.Dispose(); }
 }
