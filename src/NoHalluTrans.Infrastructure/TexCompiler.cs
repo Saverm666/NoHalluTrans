@@ -13,10 +13,16 @@ public sealed class TexCompiler(TexRuntime runtime, IProcessRunner runner)
         string logPath = Path.Combine(directory, stem + ".log");
         string aux = Path.Combine(directory, stem + ".aux");
         List<string> args = ["-halt-on-error", "-file-line-error", "-interaction=nonstopmode", "-recorder", project.ShellEscape ? "-shell-escape" : "-no-shell-escape", Path.GetRelativePath(directory, project.MainTex).Replace('\\', '/')];
+        // The default XeTeX driver command uses -q and hides the failing font's name.
+        if (project.Engine == "xelatex") args.Insert(0, "-output-driver=xdvipdfmx -E");
         int runs = 0; string log = ""; int code = -1; bool bibDone = false;
         string engine;
         try { engine = runtime.Executable(project.Engine); }
         catch (FileNotFoundException ex) { return new(false, null, "! " + ex.Message, 127, 0, []); }
+        var compileEnvironment = runtime.EnvironmentVariables();
+        // The PDF driver looks up a TFM by basename even when TeX loaded it by a
+        // relative path. Keep Kpathsea's default paths and also search this project.
+        compileEnvironment["TFMFONTS"] = Path.PathSeparator + ".//";
         for (int pass = 0; pass < (bibDone ? 4 : 3); pass++)
         {
             token.ThrowIfCancellationRequested();
@@ -25,7 +31,7 @@ public sealed class TexCompiler(TexRuntime runtime, IProcessRunner runner)
             if (File.Exists(logPath)) File.Delete(logPath);
             string recorder = Path.Combine(directory, stem + ".fls");
             if (File.Exists(recorder)) File.Delete(recorder);
-            var result = await runner.RunAsync(engine, args, directory, runtime.EnvironmentVariables(), TimeSpan.FromSeconds(timeoutSeconds), token);
+            var result = await runner.RunAsync(engine, args, directory, compileEnvironment, TimeSpan.FromSeconds(timeoutSeconds), token);
             runs++; code = result.ExitCode;
             log = File.Exists(logPath) ? FileStore.ReadTex(logPath) : result.StandardOutput + "\n" + result.StandardError;
             // XeTeX's PDF driver reports missing fonts and duplicate PDF names
@@ -39,7 +45,11 @@ public sealed class TexCompiler(TexRuntime runtime, IProcessRunner runner)
             {
                 bibDone = true;
                 var bib = await runner.RunAsync(runtime.Executable(bibliography), [stem], directory, runtime.EnvironmentVariables(), TimeSpan.FromSeconds(timeoutSeconds), token);
-                if (bib.ExitCode != 0) return new(false, null, log + "\n" + bib.StandardOutput + "\n" + bib.StandardError, bib.ExitCode, runs, Missing(log));
+                if (bib.ExitCode != 0)
+                {
+                    log += "\n" + bib.StandardOutput + "\n" + bib.StandardError;
+                    return new(false, null, log, bib.ExitCode, runs, Missing(log));
+                }
                 continue;
             }
             if (!Regex.IsMatch(log, @"Rerun to get cross-references right|Rerun LaTeX|Label\(s\) may have changed|Please \(re\)run Biber")) break;
@@ -47,10 +57,20 @@ public sealed class TexCompiler(TexRuntime runtime, IProcessRunner runner)
         bool ok = code == 0 && File.Exists(pdf) && new FileInfo(pdf).Length > 0;
         return new(ok, ok ? pdf : null, log, code, runs, Missing(log));
     }
+    internal static string[] MissingPhysicalFonts(string log) =>
+        log.Contains("xdvipdfmx:fatal: Cannot proceed without .vf or \"physical\" font", StringComparison.Ordinal)
+            ? Regex.Matches(log, @"(?m)^xdvipdfmx:warning: Could not locate a virtual/physical font for TFM ""([A-Za-z0-9_.-]+)""")
+                .Select(m => m.Groups[1].Value + ".tfm").Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+            : [];
+
     public static string[] Missing(string log)
     {
         var files = Regex.Matches(log, "(?:File|file) [`']([^`'\\r\\n]+\\.(?:sty|cls|def|fd|cfg|bst|bbx|cbx|lbx|ldf|tex|ltx|enc|map|tfm|vf|pfb|otf|ttf|ttc|clo|ist|code\\.tex|mps))[`'] (?:not found|not found\\.)")
-            .Select(m => Path.GetFileName(m.Groups[1].Value));
+            .Select(m => TexTemplateLibrary.Normalize(m.Groups[1].Value));
+        var bibtexStyles = Regex.Matches(log, @"(?m)^I couldn't open style file ([^\r\n]+\.bst)[ \t]*\r?$")
+            .Select(m => TexTemplateLibrary.Normalize(m.Groups[1].Value));
+        var inputFiles = Regex.Matches(log, @"I can't find file [`']([^`'\r\n]+\.(?:tex|ltx|sty|cls|def|cfg))[`']")
+            .Select(m => TexTemplateLibrary.Normalize(m.Groups[1].Value));
         var extensionlessImages = Regex.Matches(log, @"LaTeX Error: File [`']([^`'\r\n./\\]+)[`'] not found\.[\s\S]{0,600}?I could not locate the file with any of these extensions:")
             .Select(m => m.Groups[1].Value.Trim())
             .Where(name => Regex.IsMatch(name, @"^[A-Za-z0-9_.-]+$"))
@@ -67,6 +87,9 @@ public sealed class TexCompiler(TexRuntime runtime, IProcessRunner runner)
             .Select(m => m.Groups[1].Value.Trim() + ".ldf");
         var tfmFonts = Regex.Matches(log, @"Font (?:\\?[^\s=]+)=([^\s:/\\]+)(?:\s+at\b|\s*not loadable:)[^\r\n]*not loadable: Metric \(TFM\) file (?:or installed font )?not found")
             .Select(m => m.Groups[1].Value.Trim() + ".tfm");
+        var driverMetrics = Regex.Matches(log, @"(?m)^xdvipdfmx:fatal: Unable to find TFM file ""([A-Za-z0-9_.-]+)""")
+            .Select(m => m.Groups[1].Value.EndsWith(".tfm", StringComparison.OrdinalIgnoreCase)
+                ? m.Groups[1].Value : m.Groups[1].Value + ".tfm");
         var pkFonts = Regex.Matches(log, @"mktexpk: don't know how to create bitmap font for ([^\s.]+)")
             .Select(m => m.Groups[1].Value.Trim() + ".tfm");
         var fonts = Regex.Matches(log, @"The font ""([^""\r\n]+)"" cannot be found")
@@ -74,6 +97,8 @@ public sealed class TexCompiler(TexRuntime runtime, IProcessRunner runner)
             .Where(name => !string.IsNullOrWhiteSpace(name) && !name.Contains('/') && !name.Contains('\\') && !name.Contains(':'))
             .Select(name => Regex.IsMatch(name, @"\.(?:otf|ttf|ttc)$", RegexOptions.IgnoreCase) ? name : "font:" + name);
         return files
+            .Concat(bibtexStyles)
+            .Concat(inputFiles)
             .Concat(extensionlessImages)
             .Concat(fontDefinitions)
             .Concat(tikzLibraries)
@@ -81,6 +106,7 @@ public sealed class TexCompiler(TexRuntime runtime, IProcessRunner runner)
             .Concat(biblatexStyles)
             .Concat(babelLanguages)
             .Concat(tfmFonts)
+            .Concat(driverMetrics)
             .Concat(pkFonts)
             .Concat(fonts)
             .Distinct(StringComparer.OrdinalIgnoreCase)

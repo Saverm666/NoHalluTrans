@@ -64,7 +64,10 @@
         </Border>
         <Grid Margin="0,2,0,0">
           <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
-          <Button Grid.Column="1" Content="保存设置" Style="{StaticResource AccentButtonStyle}" Command="{Binding SaveSettingsCommand}" Padding="20,9"/>
+          <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+            <Button Content="打开模板库" Command="{Binding OpenTemplateLibraryCommand}" ToolTipService.ToolTip="将官方模板解压到模板库，任务缺少文件时可离线复用。"/>
+            <Button Content="保存设置" Style="{StaticResource AccentButtonStyle}" Command="{Binding SaveSettingsCommand}" Padding="20,9"/>
+          </StackPanel>
         </Grid>
       </StackPanel>
     </ScrollViewer>

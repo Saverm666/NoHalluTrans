@@ -30,12 +30,15 @@ public sealed class TranslationPipeline(HttpClient http, TexRuntime runtime, IPr
             Stage("compile_original", "编译原文 PDF");
             var preflight = await runtime.PreflightAsync(project, token);
             FileStore.WriteText(Path.Combine(workDirectory, "preflight.json"), JsonSerializer.Serialize(preflight, JsonDefaults.Options));
+            var library = new TexTemplateLibrary(runtime.TemplateLibraryRoot);
             if (preflight.Missing.Count > 0)
             {
                 journal.Report(new("issue", "compile_original", "检测到缺失的 TeX 依赖：" + string.Join(", ", preflight.Missing), Code: "preflight-missing"));
-                await runtime.InstallMissingAsync(preflight.Missing, journal, token);
+                // Confirm library candidates with a real compiler error before copying a file.
+                string[] repositoryFiles = preflight.Missing.Where(file => !library.HasCandidate(file, token)).ToArray();
+                if (repositoryFiles.Length > 0) await runtime.InstallMissingAsync(repositoryFiles, journal, token);
             }
-            var compiler = new TexCompiler(runtime, processes); var repair = new RepairEngine(compiler, runtime);
+            var compiler = new TexCompiler(runtime, processes); var repair = new RepairEngine(compiler, runtime, library);
             var original = await repair.CompileWithRepairAsync(project, options, journal, token);
             records.AddRange(original.Records);
             string? originalPdf = null;
@@ -48,7 +51,11 @@ public sealed class TranslationPipeline(HttpClient http, TexRuntime runtime, IPr
                 FileStore.WriteText(Path.Combine(workDirectory, "original-compile.log"), original.Compile.Log);
             }
             if (originalPdf is null && options.PdfLayout != "target-only")
-                throw new IOException("原文 PDF 构建失败，无法生成双语 PDF。请选择仅目标语言，或修复原文后重试。");
+            {
+                string? cause = original.Compile.Diagnostics.FirstOrDefault(d => d.Kind == "error")?.Message;
+                throw new IOException("原文 PDF 构建失败，无法生成双语 PDF。请选择仅目标语言，或修复原文后重试。" +
+                    (cause is null ? "" : "\n" + cause));
+            }
             Stage("parse", "提取正文片段并保护公式与命令");
             List<Fragment> fragments = []; Dictionary<string, string> sourceTexts = [];
             int scannedFiles = 0;

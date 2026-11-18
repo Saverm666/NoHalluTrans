@@ -4,20 +4,61 @@ using NoHalluTrans.Core;
 
 namespace NoHalluTrans.Infrastructure;
 
-public sealed class RepairEngine(TexCompiler compiler, TexRuntime runtime)
+public sealed class RepairEngine
 {
+    private readonly TexCompiler compiler;
+    private readonly TexRuntime runtime;
+    private readonly TexTemplateLibrary library;
+
+    public RepairEngine(TexCompiler compiler, TexRuntime runtime)
+        : this(compiler, runtime, new TexTemplateLibrary(runtime.TemplateLibraryRoot)) { }
+
+    internal RepairEngine(TexCompiler compiler, TexRuntime runtime, TexTemplateLibrary library)
+    {
+        this.compiler = compiler;
+        this.runtime = runtime;
+        this.library = library;
+    }
+
     public RepairRules Catalog { get; } = new();
     public async Task<(CompileResult Compile, List<RepairRecord> Records)> CompileWithRepairAsync(PreparedProject project,
         PipelineOptions options, IProgress<PipelineEvent>? progress, CancellationToken token)
     {
         List<RepairRecord> records = []; HashSet<string> applied = [], packageAttempts = [];
+        HashSet<string> physicalFontAttempts = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, TexTemplateLibrary.Resolution> localAttempts = new(StringComparer.OrdinalIgnoreCase);
         CompileResult result = await compiler.CompileAsync(project, options.CompileTimeoutSeconds, token);
         int repairRound = 0, packageRound = 0;
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            string[] missing = result.Ok ? [] : result.MissingFiles.Where(packageAttempts.Add).ToArray();
-            if (missing.Length > 0 && packageRound < 32 && await runtime.InstallMissingAsync(missing, progress, token))
+            IReadOnlyList<string> missing = result.Ok ? [] : result.MissingFiles;
+            bool restored = false;
+            if (packageRound < 32)
+            {
+                foreach (string file in missing)
+                {
+                    if (localAttempts.ContainsKey(file)) continue;
+                    var resolution = library.Restore(project, file, progress, token);
+                    localAttempts.Add(file, resolution);
+                    restored |= resolution == TexTemplateLibrary.Resolution.Restored;
+                }
+            }
+            if (restored)
+            {
+                packageRound++;
+                result = await compiler.CompileAsync(project, options.CompileTimeoutSeconds, token);
+                continue;
+            }
+            string[] repositoryFiles = missing.Where(file => localAttempts.GetValueOrDefault(file) != TexTemplateLibrary.Resolution.Ambiguous && packageAttempts.Add(file)).ToArray();
+            if (repositoryFiles.Length > 0 && packageRound < 32 && await runtime.InstallMissingAsync(repositoryFiles, progress, token))
+            {
+                packageRound++;
+                result = await compiler.CompileAsync(project, options.CompileTimeoutSeconds, token);
+                continue;
+            }
+            string[] physicalFonts = result.Ok ? [] : TexCompiler.MissingPhysicalFonts(result.Log).Where(physicalFontAttempts.Add).ToArray();
+            if (physicalFonts.Length > 0 && packageRound < 32 && await runtime.InstallMissingAsync(physicalFonts, progress, token, reinstall: true))
             {
                 packageRound++;
                 result = await compiler.CompileAsync(project, options.CompileTimeoutSeconds, token);

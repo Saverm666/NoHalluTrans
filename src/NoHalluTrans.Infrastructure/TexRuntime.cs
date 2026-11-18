@@ -9,6 +9,7 @@ public sealed class TexRuntime
     public string Root { get; }
     public string Bin { get; }
     public bool AutoInstallPackages { get; set; }
+    public string? TemplateLibraryRoot { get; init; }
     private readonly IProcessRunner runner;
     private static readonly SemaphoreSlim PackageGate = new(1, 1);
     public TexRuntime(string root, IProcessRunner runner)
@@ -113,7 +114,7 @@ public sealed class TexRuntime
         string? suggested = project.Engine == "pdflatex" && packages.Any(p => p is "ctex" or "xeCJK" or "fontspec" or "unicode-math" or "luatexja") ? "xelatex" : null;
         return new(project.Engine, binary, missing.Count == 0 && suggested is null, missing, available, suggested);
     }
-    public async Task<bool> InstallMissingAsync(IEnumerable<string> files, IProgress<PipelineEvent>? progress, CancellationToken token)
+    public async Task<bool> InstallMissingAsync(IEnumerable<string> files, IProgress<PipelineEvent>? progress, CancellationToken token, bool reinstall = false)
     {
         if (!AutoInstallPackages) return false;
         await PackageGate.WaitAsync(token);
@@ -130,7 +131,7 @@ public sealed class TexRuntime
             }
             HashSet<string> packages = [];
             List<string> searched = [];
-            foreach (string file in files.Distinct().Take(10))
+            foreach (string file in files.Select(RepositoryLookupName).Distinct(StringComparer.OrdinalIgnoreCase).Take(10))
             {
                 string? pattern = null;
                 string display = file;
@@ -156,13 +157,19 @@ public sealed class TexRuntime
                 progress?.Report(new("stage", "packages", "正在查找依赖：" + display));
                 var result = await TlmgrAsync(["search", "--global", "--file", pattern], token);
                 if (result.ExitCode != 0) throw new IOException("补包仓库不可用或年度不匹配。请检查网络和编译环境。\n" + result.StandardError);
-                int before = packages.Count;
-                foreach (Match m in Regex.Matches(result.StandardOutput, @"(?m)^([a-z0-9][a-z0-9.-]*):\s*$")) packages.Add(m.Groups[1].Value);
-                if (packages.Count > before) searched.Add(file);
+                var matches = Regex.Matches(result.StandardOutput, @"(?m)^([a-z0-9][a-z0-9.-]*):\s*$");
+                if (matches.Count > 0)
+                {
+                    searched.Add(file);
+                    foreach (Match match in matches) packages.Add(match.Groups[1].Value);
+                }
+                else if (Regex.IsMatch(file, @"\.(?:sty|cls|bst)$", RegexOptions.IgnoreCase))
+                    progress?.Report(new("issue", "packages", "TeX Live 仓库未收录 " + file + "。如为会议或机构模板，请将对应年份的官方模板解压到本地模板库或源码包后重试。", Code: "package-template-not-found"));
             }
             if (packages.Count == 0) return false;
-            progress?.Report(new("stage", "packages", "正在安装依赖：" + string.Join(", ", packages)));
-            var install = await TlmgrAsync(["install", .. packages], token);
+            progress?.Report(new("stage", "packages", (reinstall ? "正在修复字体包与映射：" : "正在安装依赖：") + string.Join(", ", packages)));
+            string[] arguments = reinstall ? ["install", "--reinstall", .. packages] : ["install", .. packages];
+            var install = await TlmgrAsync(arguments, token);
             if (install.ExitCode != 0)
                 throw new IOException("TeX 依赖安装失败。\n" + install.StandardError + install.StandardOutput);
             bool verified = true;
@@ -191,6 +198,8 @@ public sealed class TexRuntime
         }
         finally { PackageGate.Release(); }
     }
+    private static string RepositoryLookupName(string file) => Path.GetFileName(file.Replace('\\', '/'));
+
     private Task<ProcessResult> TlmgrAsync(string[] args, CancellationToken token)
     {
         if (OperatingSystem.IsWindows())

@@ -127,6 +127,7 @@ public sealed class MainViewModel : Observable, IDisposable
     public string RuntimeRoot => runtimeRoot;
     public event Action<string>? NavigationRequested;
     public string DataDirectory => store.DataDirectory;
+    public string TemplateLibraryRoot => Path.Combine(DataDirectory, "tex-templates");
     private string source = "", sourceLanguage = "en", engine = "auto", mainHint = "", translationsFile = "";
     private bool allowShellEscape, autoTerminology;
     public string Source { get => source; set { if (Set(ref source, value)) { Changed(nameof(SourceHint)); Changed(nameof(SourceHintIsWarning)); } } }
@@ -299,6 +300,7 @@ public sealed class MainViewModel : Observable, IDisposable
     public ICommand TestConnectionCommand { get; }
     public ICommand FetchModelsCommand { get; }
     public ICommand CheckEnvironmentCommand { get; }
+    public ICommand OpenTemplateLibraryCommand { get; }
     public ICommand SetupEnvironmentCommand { get; }
     public ICommand CancelEnvironmentCommand { get; }
     public ICommand BrowseWorkCommand { get; }
@@ -341,6 +343,11 @@ public sealed class MainViewModel : Observable, IDisposable
         TestConnectionCommand = new AsyncCommand(TestModelConnectionAsync, Error, () => !IsFetchingModels);
         FetchModelsCommand = new AsyncCommand(FetchModelsAsync, Error, () => !IsTestingModelConnection);
         CheckEnvironmentCommand = new AsyncCommand(CheckEnvironmentAsync, Error, () => CanManageEnvironment);
+        OpenTemplateLibraryCommand = new RelayCommand(() => Guard(() =>
+        {
+            Directory.CreateDirectory(TemplateLibraryRoot);
+            Open(TemplateLibraryRoot);
+        }));
         SetupEnvironmentCommand = new AsyncCommand(async () =>
         {
             if (Directory.Exists(runtimeRoot) && !await dialogs.ConfirmAsync("修复编译环境", "将重新下载基础环境，检查成功后替换当前环境。额外补装的宏包可能需要重新下载；下载失败时保留原环境。")) return;
@@ -444,7 +451,11 @@ public sealed class MainViewModel : Observable, IDisposable
                     { task.Detail = $"首次准备编译环境 {percent}%"; task.Percent = percent; }), activeCancellation.Token);
                     task.Percent = 0;
                     task.Model.ApiKey = Settings.Model.ApiKey;
-                    var runtime = new TexRuntime(runtimeRoot, runner) { AutoInstallPackages = Settings.AutoInstallPackages };
+                    var runtime = new TexRuntime(runtimeRoot, runner)
+                    {
+                        AutoInstallPackages = Settings.AutoInstallPackages,
+                        TemplateLibraryRoot = TemplateLibraryRoot
+                    };
                     var progress = new Progress<PipelineEvent>(e =>
                     {
                         if (task.Status != "运行中") return;

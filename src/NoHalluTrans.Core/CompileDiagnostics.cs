@@ -25,6 +25,17 @@ public static class CompileDiagnostics
                 if (errors.Add(key)) diagnostics.Add(new("error", message, m.Groups["file"].Value, int.Parse(m.Groups["line"].Value)));
                 continue;
             }
+            if (line.StartsWith("xdvipdfmx:warning: Could not locate a virtual/physical font for TFM ", StringComparison.Ordinal)
+                && log.Contains("xdvipdfmx:fatal: Cannot proceed without .vf or \"physical\" font", StringComparison.Ordinal))
+            {
+                if (errors.Add(Key(line))) diagnostics.Add(new("error", line["xdvipdfmx:warning: ".Length..].Trim()));
+                continue;
+            }
+            if (line.StartsWith("xdvipdfmx:fatal:", StringComparison.Ordinal))
+            {
+                if (errors.Add(Key(line))) diagnostics.Add(new("error", line.Trim()));
+                continue;
+            }
             if (line.StartsWith('!'))
             {
                 string message = line[1..].Trim(); if (message.Length == 0 || errors.Any(k => k.StartsWith(Key(message) + "|"))) continue;

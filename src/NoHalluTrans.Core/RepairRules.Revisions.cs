@@ -48,10 +48,13 @@ public sealed partial class RepairRules
                     && (Loads(project, "ctex") || Regex.IsMatch(project, @"\\documentclass(?:\[[^\]]*\])?\{ctex(?:art|book|rep)\}"))
                     && RuntimeCjkLines(text).Any();
             case "revision_legacy_cjk":
-                var envs = Regex.Matches(project, @"\\begin\{CJK\}(?:\{(?<encoding>[^{}]+)\}\{(?<family>[^{}]+)\})?");
-                return engine == "xelatex" && log.Contains("LaTeX Error: Environment CJK undefined.", StringComparison.Ordinal)
-                    && envs.Count > 0 && envs.All(m => m.Groups["encoding"].Value == "UTF8" && m.Groups["family"].Value is "gbsn" or "gkai" or "bsmi" or "bkai")
-                    && !Loads(project, "CJKutf8") && !Regex.IsMatch(project, @"\\(?:newenvironment|renewenvironment)\{CJK\}");
+                var environments = LegacyCjkEnvironments(project).GroupBy(m => m.Groups["name"].Value);
+                bool legacyPackageDisabled = log.Contains("Package 'CJKutf8.sty' has been disabled.", StringComparison.Ordinal)
+                    && log.Contains("can not be loaded with `xeCJK'", StringComparison.Ordinal);
+                return engine == "xelatex" && (!Loads(project, "CJKutf8") || legacyPackageDisabled)
+                    && environments.Any(group => log.Contains($"LaTeX Error: Environment {group.Key} undefined.", StringComparison.Ordinal)
+                        && group.All(m => m.Groups["encoding"].Value == "UTF8" && m.Groups["family"].Value is "gbsn" or "gkai" or "bsmi" or "bkai")
+                        && !Regex.IsMatch(project, @"\\(?:newenvironment|renewenvironment)\s*\{" + Regex.Escape(group.Key) + @"\}"));
             case "revision_bm_letters":
                 return engine is "xelatex" or "lualatex" && Loads(project, "unicode-math") && Loads(project, "bm")
                     && Regex.Matches(log, @"(?:Extended math\s*char used as mathchar|Improper alphabetic constant)[\s\S]{0,700}")
@@ -195,10 +198,14 @@ public sealed partial class RepairRules
             case "revision_legacy_cjk":
                 string source = ExecutableText(context.ProjectSource ?? text);
                 string snippet = PreserveLatinCjkLoader(source, context.Log);
-                var families = Regex.Matches(source, @"\\begin\{CJK\}\{UTF8\}\{(gbsn|gkai|bsmi|bkai)\}").Select(m => m.Groups[1].Value).Distinct();
+                var usedEnvironments = LegacyCjkEnvironments(source).Where(m => context.Log.Contains(
+                    $"LaTeX Error: Environment {m.Groups["name"].Value} undefined.", StringComparison.Ordinal)).ToArray();
+                var families = usedEnvironments.Select(m => m.Groups["family"].Value).Distinct();
                 foreach (string family in families)
                     snippet += "\\setCJKfamilyfont{hjfy" + family + "}{" + (family is "gkai" or "bkai" ? "FandolKai-Regular.otf" : "FandolSong-Regular.otf") + "}\n";
-                return Inject(text, marker + snippet + "\\newenvironment{CJK}[2]{\\CJKfamily{hjfy#2}}{}\n");
+                foreach (string environment in usedEnvironments.Select(m => m.Groups["name"].Value).Distinct())
+                    snippet += "\\newenvironment{" + environment + "}[2]{\\CJKfamily{hjfy#2}}{}\n";
+                return Inject(text, marker + snippet);
             case "revision_bm_letters":
                 return marker + BoldCalls.Replace(text, m =>
                 {
@@ -549,6 +556,9 @@ public sealed partial class RepairRules
             && (source is null || !DuplicateAppendixEquationTargets(ExecutableText(source), root, main)),
         _ => true
     };
+    private static MatchCollection LegacyCjkEnvironments(string source) => Regex.Matches(source,
+        @"\\begin\s*\{(?<name>CJK\*?)\}\s*(?:\{(?<encoding>[^{}]+)\}\s*\{(?<family>[^{}]+)\})?");
+
     private static string PreserveLatinCjkLoader(string source, string log)
     {
         return "\\makeatletter\n\\@ifpackageloaded{xeCJK}{}{%\n"
